@@ -1,0 +1,586 @@
+﻿import React, {useEffect, useState, useRef} from 'react';
+import {
+  View, Text, StyleSheet, FlatList, TextInput,
+  TouchableOpacity, KeyboardAvoidingView, Platform,
+  Image, ActivityIndicator, StatusBar, Linking,Alert,
+} from 'react-native';
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
+import {launchImageLibrary} from 'react-native-image-picker';
+
+const cleanName = (raw: string | null | undefined): string => {
+  if (!raw) return 'User';
+  return raw.includes('@') ? raw.split('@')[0] : raw;
+};
+
+const QUICK_EMOJIS = [
+  '😊','😂','❤️','👍','🎬','🎭','🔥','✅',
+  '😍','🙏','💪','🎉','👏','🤝','💯','🎯',
+  '✨','🙌','😎','🤩','💥','🎊','👌','🥳',
+];
+
+export default function ChatScreen({route, navigation}: any) {
+  const {chat} = route.params;
+  const currentUser = auth().currentUser;
+  const flatListRef = useRef<FlatList>(null);
+  const inputRef = useRef<TextInput>(null);
+
+  const otherUserId = chat.participants?.find(
+    (id: string) => id !== currentUser?.uid,
+  );
+
+  const initialHeaderName = (() => {
+    const participants: string[] = chat.participants || [];
+    const names: string[] = chat.participantNames || [];
+    const otherIndex = participants.findIndex(
+      (id: string) => id !== currentUser?.uid,
+    );
+    if (otherIndex !== -1 && names[otherIndex]) {
+      return cleanName(names[otherIndex]);
+    }
+    return 'User';
+  })();
+
+  const [messages,        setMessages]        = useState<any[]>([]);
+  const [newMessage,      setNewMessage]      = useState('');
+  const [loading,         setLoading]         = useState(true);
+  const [otherUserTyping, setOtherUserTyping] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [otherUserOnline, setOtherUserOnline] = useState(false);
+  const [otherUserName,   setOtherUserName]   = useState(initialHeaderName);
+  const [otherUserPhoto,  setOtherUserPhoto]  = useState<string | null>(null);
+
+  let typingTimeout: any;
+
+  useEffect(() => {
+    const unsubscribe = firestore()
+      .collection('chats')
+      .doc(chat.id)
+      .collection('messages')
+      .orderBy('createdAt', 'asc')
+      .onSnapshot(
+        snapshot => {
+          const data = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+          setMessages(data);
+          setLoading(false);
+          setTimeout(() => flatListRef.current?.scrollToEnd({animated: true}), 100);
+        },
+        error => {
+          console.log('❌ MESSAGE LISTENER ERROR:', error);
+          setLoading(false);
+        },
+      );
+    return unsubscribe;
+  }, [chat.id]);
+
+  useEffect(() => {
+    const unsubscribe = firestore()
+      .collection('chats')
+      .doc(chat.id)
+      .onSnapshot(doc => {
+        if (doc.exists) {
+          const data = doc.data();
+          setOtherUserTyping(
+            !!(data?.typingUser && data.typingUser !== currentUser?.uid),
+          );
+        }
+      });
+    return unsubscribe;
+  }, [chat.id]);
+
+  useEffect(() => {
+    if (!otherUserId) return;
+    const unsubscribe = firestore()
+      .collection('users')
+      .doc(otherUserId)
+      .onSnapshot(doc => {
+        const data = doc.data();
+        if (!data) return;
+        const photo = data.photoUrl || data.photoURL || null;
+        setOtherUserPhoto(photo);
+        const freshName = data.fullName || data.displayName || data.name;
+        if (freshName) setOtherUserName(cleanName(freshName));
+        const lastSeen = data.lastSeen?.toDate?.();
+        const isOnlineFlag = data.isOnline || false;
+        if (isOnlineFlag && lastSeen) {
+          const diffMinutes = (Date.now() - lastSeen.getTime()) / 60000;
+          setOtherUserOnline(diffMinutes < 2);
+        } else {
+          setOtherUserOnline(false);
+        }
+      });
+    return unsubscribe;
+  }, [otherUserId]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const unread = messages.filter((msg: any) =>
+      msg.senderId !== currentUser?.uid &&
+      !msg.readBy?.includes(currentUser?.uid),
+    );
+    firestore().collection('chats').doc(chat.id)
+      .update({[`unreadCount.${currentUser.uid}`]: 0})
+      .catch(e => console.log('UNREAD RESET ERROR:', e));
+    if (unread.length === 0) return;
+    unread.forEach(async (msg: any) => {
+      try {
+        await firestore().collection('chats').doc(chat.id)
+          .collection('messages').doc(msg.id)
+          .update({readBy: firestore.FieldValue.arrayUnion(currentUser?.uid)});
+      } catch (e: any) {
+        console.log('❌ READ RECEIPT FAILED:', e.message || e);
+      }
+    });
+  }, [messages, chat.id, currentUser?.uid]);
+
+  const handleTyping = async (text: string) => {
+    setNewMessage(text);
+    try {
+      await firestore().collection('chats').doc(chat.id)
+        .update({typingUser: currentUser?.uid});
+    } catch (e) {console.log(e);}
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(async () => {
+      try {
+        await firestore().collection('chats').doc(chat.id)
+          .update({typingUser: null});
+      } catch (e) {console.log(e);}
+    }, 1500);
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !currentUser) return;
+    const text = newMessage.trim();
+    setNewMessage('');
+    setShowEmojiPicker(false);
+    try {
+      await firestore().collection('chats').doc(chat.id).collection('messages').add({
+        type: 'text',
+        text,
+        senderId: currentUser?.uid,
+        senderEmail: currentUser?.email,
+        senderName: currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User',
+        senderPhoto: currentUser?.photoURL || '',
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        readBy: [],
+      });
+      await firestore().collection('chats').doc(chat.id).update({
+        lastMessage: text,
+        lastMessageTime: firestore.FieldValue.serverTimestamp(),
+        typingUser: null,
+        [`unreadCount.${otherUserId}`]: firestore.FieldValue.increment(1),
+      });
+
+      // Only notify if no unread message notification exists already
+if (otherUserId) {
+        try {
+          const senderDoc = await firestore()
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
+          const senderData = senderDoc.data();
+          const realName =
+            senderData?.fullName ||
+            senderData?.displayName ||
+            senderData?.name ||
+            currentUser?.displayName ||
+            currentUser?.email?.split('@')[0] ||
+            'Someone';
+
+          console.log('SENDER DOC DATA:', JSON.stringify(senderDoc.data()));
+          console.log('REAL NAME:', realName);
+
+        await firestore().collection('notifications').add({
+  userId: otherUserId,
+  type: 'message',
+  title: '💬 New Message',
+  message: `${realName} sent you a message`,
+  senderId: currentUser?.uid,
+  chatId: chat.id,
+  read: false,
+  createdAt: firestore.FieldValue.serverTimestamp(),
+});
+        } catch (e: any) {
+          console.log('❌ NOTIFICATION ERROR:', JSON.stringify(e));
+          Alert.alert('NOTIF ERROR', e?.message || JSON.stringify(e));
+        }
+      }
+
+    } catch (e: any) {
+      console.log('❌ SEND MESSAGE ERROR:', e.message || e);
+    }
+  };
+
+  const pickImage = async () => {
+    const result = await launchImageLibrary({mediaType: 'photo', quality: 0.7});
+    if (result.assets && result.assets[0]?.uri) uploadImage(result.assets[0].uri);
+  };
+
+  const uploadImage = async (imageUri: string) => {
+    try {
+      const data = new FormData();
+      data.append('file', {uri: imageUri, type: 'image/jpeg', name: 'chat.jpg'} as any);
+      data.append('upload_preset', 'cinelink_upload');
+      const response = await fetch('https://api.cloudinary.com/v1_1/dipwobgzb/image/upload', {method: 'POST', body: data});
+      const fileData = await response.json();
+      await firestore().collection('chats').doc(chat.id).collection('messages').add({
+        type: 'image',
+        imageUrl: fileData.secure_url,
+        senderId: currentUser?.uid,
+        senderEmail: currentUser?.email,
+        senderName: currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User',
+        senderPhoto: currentUser?.photoURL || '',
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        readBy: [],
+      });
+      await firestore().collection('chats').doc(chat.id).update({
+        lastMessage: '📷 Photo',
+        lastMessageTime: firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (e) {console.log(e);}
+  };
+
+  const formatTime = (timestamp: any) => {
+    if (!timestamp?.toDate) return '';
+    return timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+  };
+
+  const formatDate = (timestamp: any) => {
+    if (!timestamp?.toDate) return '';
+    const date = timestamp.toDate();
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === today.toDateString()) return 'Today';
+    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return date.toLocaleDateString([], {day: 'numeric', month: 'long', year: 'numeric'});
+  };
+
+  /* ── Render clickable links in text ── */
+  const renderMessageText = (text: string, isMyMessage: boolean) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    return (
+      <Text style={[styles.messageText, isMyMessage && styles.myMessageText]}>
+        {parts.map((part, index) => {
+          if (urlRegex.test(part)) {
+            return (
+              <Text
+                key={index}
+                style={styles.linkText}
+                onPress={() => Linking.openURL(part).catch(() => {})}>
+                {part}
+              </Text>
+            );
+          }
+          return <Text key={index}>{part}</Text>;
+        })}
+      </Text>
+    );
+  };
+
+  const renderMessage = ({item, index}: any) => {
+    const message = item as any;
+    const isMyMessage = message.senderId === currentUser?.uid;
+    const previousMessage = messages[index - 1];
+    const nextMessage = messages[index + 1];
+
+    const showDate =
+      !previousMessage ||
+      formatDate(previousMessage.createdAt) !== formatDate(message.createdAt);
+
+    const isFirstInGroup =
+      !previousMessage ||
+      previousMessage.senderId !== message.senderId ||
+      formatDate(previousMessage.createdAt) !== formatDate(message.createdAt);
+
+    const isLastInGroup =
+      !nextMessage ||
+      nextMessage.senderId !== message.senderId;
+
+    return (
+      <View>
+        {showDate && (
+          <View style={styles.dateSeparator}>
+            <Text style={styles.dateText}>{formatDate(message.createdAt)}</Text>
+          </View>
+        )}
+
+        <View style={[
+          styles.messageRow,
+          isMyMessage ? styles.myMessageRow : styles.otherMessageRow,
+          !isLastInGroup && {marginBottom: 2},
+        ]}>
+
+          {!isMyMessage && (
+            <View style={styles.avatarSpace}>
+              {isLastInGroup ? (
+                otherUserPhoto ? (
+                  <Image source={{uri: otherUserPhoto}} style={styles.msgAvatar} />
+                ) : (
+                  <View style={styles.msgAvatarPlaceholder}>
+                    <Text style={styles.msgAvatarText}>
+                      {otherUserName?.charAt(0)?.toUpperCase()}
+                    </Text>
+                  </View>
+                )
+              ) : null}
+            </View>
+          )}
+
+          <View style={[
+            styles.bubble,
+            isMyMessage ? styles.myBubble : styles.otherBubble,
+            isMyMessage && isFirstInGroup && styles.myBubbleFirst,
+            !isMyMessage && isFirstInGroup && styles.otherBubbleFirst,
+            isMyMessage && isLastInGroup && styles.myBubbleLast,
+            !isMyMessage && isLastInGroup && styles.otherBubbleLast,
+          ]}>
+            {message.type === 'image' ? (
+              <Image source={{uri: message.imageUrl}} style={styles.chatImage} />
+            ) : (
+              renderMessageText(message.text || '', isMyMessage)
+            )}
+
+            <View style={styles.messageFooter}>
+              <Text style={[styles.timestamp, isMyMessage && styles.myTimestamp]}>
+                {formatTime(message.createdAt)}
+              </Text>
+              {isMyMessage && (
+                <Text style={[
+                  styles.readReceipt,
+                  message.readBy?.length > 0 && styles.readReceiptRead,
+                ]}>
+                  {message.readBy?.length > 0 ? ' ✓✓' : ' ✓'}
+                </Text>
+              )}
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const statusBarHeight = StatusBar.currentHeight ?? 24;
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#1C1C1C" />
+
+      {/* HEADER */}
+      <View style={[styles.header, {paddingTop: Platform.OS === 'ios' ? 54 : statusBarHeight + 12}]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backWrapper}>
+          <Text style={styles.backButton}>←</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => otherUserId && navigation.navigate('PublicProfile', {userId: otherUserId})}
+          style={styles.profileCircle}>
+          {otherUserPhoto ? (
+            <Image source={{uri: otherUserPhoto}} style={styles.headerPhoto} />
+          ) : (
+            <Text style={styles.profileInitial}>
+              {otherUserName?.charAt(0)?.toUpperCase()}
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.headerInfo}
+          onPress={() => otherUserId && navigation.navigate('PublicProfile', {userId: otherUserId})}>
+          <Text style={styles.headerName}>{otherUserName}</Text>
+          <Text style={[
+            styles.headerStatus,
+            {color: otherUserTyping ? '#FBBF24' : otherUserOnline ? '#4ADE80' : '#A09080'},
+          ]}>
+            {otherUserTyping ? 'typing...' : otherUserOnline ? '● Online' : '○ Offline'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#C9956C" />
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={item => item.id}
+            renderItem={renderMessage}
+            contentContainerStyle={{paddingHorizontal: 8, paddingVertical: 12, paddingBottom: 20}}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyEmoji}>👋</Text>
+                <Text style={styles.emptyText}>Say hello to {otherUserName}!</Text>
+              </View>
+            }
+          />
+        )}
+
+        {otherUserTyping && (
+          <View style={styles.typingContainer}>
+            <View style={styles.typingBubble}>
+              <Text style={styles.typingDots}>● ● ●</Text>
+            </View>
+          </View>
+        )}
+
+        {showEmojiPicker && (
+          <View style={styles.emojiRow}>
+            {QUICK_EMOJIS.map(emoji => (
+              <TouchableOpacity
+                key={emoji}
+                style={styles.emojiItemWrapper}
+                onPress={() => {
+                  setNewMessage(prev => prev + emoji);
+                  setShowEmojiPicker(false);
+                  setTimeout(() => inputRef.current?.focus(), 100);
+                }}>
+                <Text style={styles.emojiItem}>{emoji}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.inputContainer}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => {
+              setShowEmojiPicker(!showEmojiPicker);
+              if (!showEmojiPicker) inputRef.current?.blur();
+            }}>
+            <Text style={styles.emojiButton}>{showEmojiPicker ? '⌨️' : '😊'}</Text>
+          </TouchableOpacity>
+
+          <TextInput
+            ref={inputRef}
+            style={styles.input}
+            placeholder="Message"
+            placeholderTextColor="#A09080"
+            value={newMessage}
+            onChangeText={handleTyping}
+            multiline
+            onFocus={() => setShowEmojiPicker(false)}
+          />
+
+          <TouchableOpacity style={styles.iconBtn} onPress={pickImage}>
+            <Text style={styles.attachIcon}>📎</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.sendButton, !newMessage.trim() && styles.sendButtonDisabled]}
+            onPress={sendMessage}
+            disabled={!newMessage.trim()}>
+            <Text style={styles.sendIcon}>➤</Text>
+          </TouchableOpacity>
+        </View>
+
+      </KeyboardAvoidingView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {flex: 1, backgroundColor: '#0A0A0A'},
+  flex: {flex: 1},
+  header: {
+    backgroundColor: '#1C1C1C',
+    paddingHorizontal: 12, paddingBottom: 12,
+    flexDirection: 'row', alignItems: 'center',
+    borderBottomWidth: 1, borderBottomColor: '#2A2A2A', elevation: 4,
+  },
+  backWrapper: {marginRight: 8},
+  backButton: {color: '#C9956C', fontWeight: 'bold', fontSize: 26},
+  profileCircle: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: '#C9956C',
+    justifyContent: 'center', alignItems: 'center',
+    marginRight: 10, overflow: 'hidden',
+  },
+  headerPhoto: {width: 42, height: 42, borderRadius: 21},
+  profileInitial: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 17},
+  headerInfo: {flex: 1},
+  headerName: {color: '#FFFFFF', fontSize: 16, fontWeight: 'bold'},
+  headerStatus: {fontSize: 12, marginTop: 1},
+  loadingContainer: {flex: 1, justifyContent: 'center', alignItems: 'center'},
+  emptyContainer: {flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 120},
+  emptyEmoji: {fontSize: 50, marginBottom: 12},
+  emptyText: {color: '#A09080', fontSize: 16},
+  messageRow: {flexDirection: 'row', marginBottom: 4, paddingHorizontal: 4, alignItems: 'flex-end'},
+  myMessageRow: {justifyContent: 'flex-end'},
+  otherMessageRow: {justifyContent: 'flex-start'},
+  avatarSpace: {width: 32, marginRight: 6, alignItems: 'center', justifyContent: 'flex-end'},
+  msgAvatar: {width: 30, height: 30, borderRadius: 15},
+  msgAvatarPlaceholder: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: '#C9956C',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  msgAvatarText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 12},
+  bubble: {maxWidth: '75%', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18},
+  myBubble: {backgroundColor: '#C9956C'},
+  otherBubble: {backgroundColor: '#1E2E42'},
+  myBubbleFirst: {borderTopRightRadius: 4},
+  otherBubbleFirst: {borderTopLeftRadius: 4},
+  myBubbleLast: {borderBottomRightRadius: 4},
+  otherBubbleLast: {borderBottomLeftRadius: 4},
+  messageText: {color: '#FFFFFF', fontSize: 15, lineHeight: 21},
+  myMessageText: {color: '#FFFFFF'},
+  linkText: {color: '#93C5FD', textDecorationLine: 'underline', fontSize: 15, lineHeight: 21},
+  messageFooter: {flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 3},
+  timestamp: {color: 'rgba(255,255,255,0.5)', fontSize: 11},
+  myTimestamp: {color: 'rgba(255,255,255,0.7)'},
+  readReceipt: {color: 'rgba(255,255,255,0.5)', fontSize: 11},
+  readReceiptRead: {color: '#93C5FD'},
+  chatImage: {width: 200, height: 260, borderRadius: 12},
+  dateSeparator: {alignItems: 'center', marginVertical: 12},
+  dateText: {
+    backgroundColor: '#1C1C1C', color: '#A09080',
+    paddingHorizontal: 12, paddingVertical: 4,
+    borderRadius: 10, fontSize: 11,
+  },
+  typingContainer: {paddingHorizontal: 48, paddingBottom: 6},
+  typingBubble: {
+    backgroundColor: '#1E2E42',
+    borderRadius: 18, borderBottomLeftRadius: 4,
+    paddingHorizontal: 14, paddingVertical: 10,
+    alignSelf: 'flex-start',
+  },
+  typingDots: {color: '#A09080', fontSize: 10, letterSpacing: 3},
+  emojiRow: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    backgroundColor: '#1C1C1C', padding: 8,
+    borderTopWidth: 1, borderTopColor: '#2A2A2A',
+  },
+  emojiItemWrapper: {width: '12.5%', alignItems: 'center', paddingVertical: 6},
+  emojiItem: {fontSize: 26},
+  inputContainer: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 8, paddingVertical: 8,
+    backgroundColor: '#1C1C1C',
+    borderTopWidth: 1, borderTopColor: '#2A2A2A', gap: 6,
+  },
+  iconBtn: {padding: 6},
+  emojiButton: {fontSize: 24},
+  attachIcon: {fontSize: 22},
+  input: {
+    flex: 1, backgroundColor: '#2A2A2A',
+    color: '#FFFFFF', borderRadius: 22,
+    paddingHorizontal: 16, paddingVertical: 10,
+    fontSize: 15, maxHeight: 120,
+  },
+  sendButton: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: '#C9956C',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  sendButtonDisabled: {opacity: 0.4},
+  sendIcon: {color: '#FFFFFF', fontSize: 18, fontWeight: 'bold'},
+});
