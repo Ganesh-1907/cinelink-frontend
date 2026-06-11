@@ -209,34 +209,31 @@ const loadComments = () => {
     } catch (e) {console.log(e);}
   };
 
-  const startChat = async () => {
-    if (audition.directorId === user?.uid) {
-      Alert.alert('Error', 'You cannot chat with yourself!');
-      return;
-    }
-    try {
-      const chatId = [user?.uid, audition.directorId].sort().join('_');
-      const chatRef = firestore().collection('chats').doc(chatId);
-      const chatDoc = await chatRef.get();
-      const directorName =
-        directorProfile?.displayName || directorProfile?.fullName ||
-        directorProfile?.name || cleanName(directorProfile?.email) ||
-        cleanName(audition.directorEmail) || 'Director';
-      if (!chatDoc.exists) {
-        await chatRef.set({
-          participants: [user?.uid, audition.directorId],
-          participantNames: [currentUserName, directorName],
-          participantEmails: [user?.email, audition.directorEmail],
-          lastMessage: '',
-          createdAt: firestore.FieldValue.serverTimestamp(),
-          updatedAt: firestore.FieldValue.serverTimestamp(),
-        });
-      }
-      navigation.navigate('ChatScreen', {
-        chat: {id: chatId, participantNames: [currentUserName, directorName]},
-      });
-    } catch (e) {console.log(e);}
-  };
+const startChat = async () => {
+  if (audition.directorId === user?.uid) {
+    Alert.alert('Error', 'You cannot chat with yourself!');
+    return;
+  }
+  try {
+    const chatId = [user?.uid, audition.directorId].sort().join('_');
+    const directorName =
+      directorProfile?.displayName || directorProfile?.fullName ||
+      directorProfile?.name || cleanName(directorProfile?.email) ||
+      cleanName(audition.directorEmail) || 'Director';
+
+    await firestore().collection('chats').doc(chatId).set({
+      participants: [user?.uid, audition.directorId],
+      participantNames: [currentUserName, directorName],
+      participantEmails: [user?.email, audition.directorEmail],
+      lastMessage: '',
+      updatedAt: firestore.FieldValue.serverTimestamp(),
+    }, {merge: true});
+
+    navigation.navigate('ChatScreen', {
+      chat: {id: chatId, participantNames: [currentUserName, directorName]},
+    });
+  } catch (e) {console.log(e);}
+};
 
   const openWhatsApp = async () => {
     if (!phoneNumber) {

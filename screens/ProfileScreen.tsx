@@ -18,7 +18,6 @@ import {useFocusEffect} from '@react-navigation/native';
 import ProfileCompletionCard from './ProfileCompletionCard';
 
 const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
-
 const CLOUD_NAME = 'dipwobgzb';
 const UPLOAD_PRESET = 'cinelink_upload';
 
@@ -29,23 +28,25 @@ interface PhotoAsset {
 }
 
 export default function ProfileScreen({navigation}: any) {
-  const [name, setName] = useState<string>('');
-  const [phone, setPhone] = useState<string>('');
-  const [bio, setBio] = useState<string>('');
-  const [role, setRole] = useState<string>('Actor');
-  const [photo, setPhoto] = useState<PhotoAsset | null>(null);
-  const [photoUrl, setPhotoUrl] = useState<string>('');
+  const [name, setName]                     = useState<string>('');
+  const [phone, setPhone]                   = useState<string>('');
+  const [bio, setBio]                       = useState<string>('');
+  const [role, setRole]                     = useState<string>('Actor');
+  const [photo, setPhoto]                   = useState<PhotoAsset | null>(null);
+  const [photoUrl, setPhotoUrl]             = useState<string>('');
   const [introVideoLink, setIntroVideoLink] = useState<string>('');
-  const [portfolio1, setPortfolio1] = useState<string>('');
-  const [portfolio2, setPortfolio2] = useState<string>('');
-  const [portfolio3, setPortfolio3] = useState<string>('');
+  const [portfolio1, setPortfolio1]         = useState<string>('');
+  const [portfolio2, setPortfolio2]         = useState<string>('');
+  const [portfolio3, setPortfolio3]         = useState<string>('');
   const [portfolioPhotos, setPortfolioPhotos] = useState<string[]>([]);
-  const [newPhotos, setNewPhotos] = useState<PhotoAsset[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [uploading, setUploading] = useState<boolean>(false);
-  const [saved, setSaved] = useState<boolean>(false);
+  const [newPhotos, setNewPhotos]           = useState<PhotoAsset[]>([]);
+  const [loading, setLoading]               = useState<boolean>(false);
+  const [uploading, setUploading]           = useState<boolean>(false);
+  const [saved, setSaved]                   = useState<boolean>(false);
   const [verificationStatus, setVerificationStatus] = useState<string>('');
-  const [location, setLocation] = useState<string>('');
+  const [location, setLocation]             = useState<string>('');
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
 
   const scrollRef = useRef<ScrollView>(null);
   const user = auth().currentUser;
@@ -56,6 +57,18 @@ export default function ProfileScreen({navigation}: any) {
       return () => clearTimeout(timer);
     }, []),
   );
+
+  // ── Real-time followers/following counts ──
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsubF = firestore()
+      .collection('users').doc(user.uid).collection('followers')
+      .onSnapshot(snap => setFollowersCount(snap.size), e => console.log(e));
+    const unsubFi = firestore()
+      .collection('users').doc(user.uid).collection('following')
+      .onSnapshot(snap => setFollowingCount(snap.size), e => console.log(e));
+    return () => { unsubF(); unsubFi(); };
+  }, [user?.uid]);
 
   const loadProfile = async () => {
     try {
@@ -184,21 +197,20 @@ export default function ProfileScreen({navigation}: any) {
     setLoading(true);
     try {
       let finalPhotoUrl = photoUrl;
-
       if (photo) {
         setUploading(true);
         finalPhotoUrl = await uploadToCloudinary(photo.uri);
         setUploading(false);
       }
 
-    let uploadedPhotos: string[] = [];
-if (newPhotos.length > 0) {
-  setUploading(true);
-  uploadedPhotos = await Promise.all(
-    newPhotos.map(p => uploadToCloudinary(p.uri)),
-  );
-  setUploading(false);
-}
+      let uploadedPhotos: string[] = [];
+      if (newPhotos.length > 0) {
+        setUploading(true);
+        uploadedPhotos = await Promise.all(
+          newPhotos.map(p => uploadToCloudinary(p.uri)),
+        );
+        setUploading(false);
+      }
 
       const allPortfolioPhotos = [...portfolioPhotos, ...uploadedPhotos];
       const trimmedName = name.trim();
@@ -215,6 +227,7 @@ if (newPhotos.length > 0) {
         phone,
         bio,
         role,
+        location,
         photoUrl: finalPhotoUrl,
         photoURL: finalPhotoUrl,
         introVideoLink,
@@ -261,16 +274,11 @@ if (newPhotos.length > 0) {
       return;
     }
     try {
-      await firestore()
-        .collection('users')
-        .doc(user?.uid)
-        .update({verificationStatus: 'pending'});
+      await firestore().collection('users').doc(user?.uid).update({verificationStatus: 'pending'});
       await firestore().collection('verificationRequests').add({
         userId: user?.uid,
         userEmail: user?.email,
-        name,
-        role,
-        bio,
+        name, role, bio,
         requestedAt: firestore.FieldValue.serverTimestamp(),
       });
       setVerificationStatus('pending');
@@ -280,12 +288,12 @@ if (newPhotos.length > 0) {
     }
   };
 
-  /* ── Scroll to form when user taps a completion item ── */
   const scrollToForm = () => {
     scrollRef.current?.scrollTo({y: 420, animated: true});
   };
 
   const totalPhotos = portfolioPhotos.length + newPhotos.length;
+  const displayName = name || user?.email?.split('@')[0] || 'Me';
 
   return (
     <ScrollView ref={scrollRef} style={styles.container}>
@@ -302,9 +310,7 @@ if (newPhotos.length > 0) {
           ) : (
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
-                {name
-                  ? name[0].toUpperCase()
-                  : user?.email?.charAt(0)?.toUpperCase() || 'C'}
+                {name ? name[0].toUpperCase() : user?.email?.charAt(0)?.toUpperCase() || 'C'}
               </Text>
             </View>
           )}
@@ -328,6 +334,31 @@ if (newPhotos.length > 0) {
 
         {name ? <Text style={styles.profileName}>{name}</Text> : null}
         <Text style={styles.email}>{user?.email || user?.phoneNumber}</Text>
+      </View>
+
+      {/* ── FOLLOWERS / FOLLOWING STATS ── */}
+      <View style={styles.statsRow}>
+        <TouchableOpacity
+          style={styles.statItem}
+          onPress={() => navigation.navigate('Followers', {
+            userId: user?.uid,
+            displayName,
+            tab: 'followers',
+          })}>
+          <Text style={styles.statNum}>{followersCount}</Text>
+          <Text style={styles.statLbl}>Followers</Text>
+        </TouchableOpacity>
+        <View style={styles.statDivider} />
+        <TouchableOpacity
+          style={styles.statItem}
+          onPress={() => navigation.navigate('Followers', {
+            userId: user?.uid,
+            displayName,
+            tab: 'following',
+          })}>
+          <Text style={styles.statNum}>{followingCount}</Text>
+          <Text style={styles.statLbl}>Following</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ✅ PROFILE COMPLETION CARD */}
@@ -360,15 +391,15 @@ if (newPhotos.length > 0) {
             </TouchableOpacity>
           ))}
         </ScrollView>
-        
+
         <Text style={styles.label}>Location</Text>
-<TextInput
-  style={styles.input}
-  placeholder="e.g. Mumbai, Delhi, Hyderabad"
-  placeholderTextColor="#A09080"
-  value={location}
-  onChangeText={setLocation}
-/>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Mumbai, Delhi, Hyderabad"
+          placeholderTextColor="#A09080"
+          value={location}
+          onChangeText={setLocation}
+        />
 
         <Text style={styles.label}>Full Name</Text>
         <TextInput
@@ -403,16 +434,11 @@ if (newPhotos.length > 0) {
         <Text style={styles.sectionTitle}>Portfolio Photos</Text>
         <Text style={styles.hint}>Add up to 5 photos ({totalPhotos}/5)</Text>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.photoRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoRow}>
           {portfolioPhotos.map((url, index) => (
             <View key={index} style={styles.photoBox}>
               <Image source={{uri: url}} style={styles.portfolioPhoto} />
-              <TouchableOpacity
-                style={styles.removeBtn}
-                onPress={() => removeExistingPhoto(index)}>
+              <TouchableOpacity style={styles.removeBtn} onPress={() => removeExistingPhoto(index)}>
                 <Text style={styles.removeBtnText}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -420,9 +446,7 @@ if (newPhotos.length > 0) {
           {newPhotos.map((p, index) => (
             <View key={`new-${index}`} style={styles.photoBox}>
               <Image source={{uri: p.uri}} style={styles.portfolioPhoto} />
-              <TouchableOpacity
-                style={styles.removeBtn}
-                onPress={() => removeNewPhoto(index)}>
+              <TouchableOpacity style={styles.removeBtn} onPress={() => removeNewPhoto(index)}>
                 <Text style={styles.removeBtnText}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -513,7 +537,7 @@ if (newPhotos.length > 0) {
             </TouchableOpacity>
           ))}
 
-          {user?.email === 'anilkumardevarakonda03@gmail.com' && (
+          {user?.email === ADMIN_EMAIL && (
             <TouchableOpacity
               style={styles.adminCard}
               onPress={() => navigation.navigate('AdminReports')}>
@@ -544,8 +568,8 @@ if (newPhotos.length > 0) {
 }
 
 const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: '#0A0A0A'},
-  avatarSection: {alignItems: 'center', paddingTop: 30, paddingBottom: 20},
+  container:    {flex: 1, backgroundColor: '#0A0A0A'},
+  avatarSection:{alignItems: 'center', paddingTop: 30, paddingBottom: 16},
   avatar: {
     width: 100, height: 100, borderRadius: 50,
     backgroundColor: '#C9956C', justifyContent: 'center', alignItems: 'center',
@@ -555,43 +579,63 @@ const styles = StyleSheet.create({
     width: 100, height: 100, borderRadius: 50,
     marginBottom: 12, borderWidth: 3, borderColor: '#C9956C',
   },
-  avatarText: {color: '#FFFFFF', fontSize: 40, fontWeight: 'bold'},
+  avatarText:   {color: '#FFFFFF', fontSize: 40, fontWeight: 'bold'},
   editBadge: {
     position: 'absolute', bottom: 12, right: 0,
     backgroundColor: '#C9956C', borderRadius: 10,
     paddingHorizontal: 8, paddingVertical: 3,
   },
-  editBadgeText: {color: '#FFFFFF', fontSize: 10, fontWeight: 'bold'},
+  editBadgeText:    {color: '#FFFFFF', fontSize: 10, fontWeight: 'bold'},
   verifiedBadge: {
     backgroundColor: '#064E3B', borderRadius: 20,
     paddingHorizontal: 14, paddingVertical: 6,
     marginTop: 8, borderWidth: 1, borderColor: '#6EE7B7',
   },
   verifiedBadgeText: {color: '#6EE7B7', fontSize: 13, fontWeight: 'bold'},
-  uploadingRow: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8},
+  uploadingRow:  {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8},
   uploadingText: {color: '#C9956C', fontSize: 12},
-  profileName: {color: '#FFFFFF', fontSize: 20, fontWeight: 'bold', marginTop: 10, marginBottom: 4},
-  email: {color: '#A09080', fontSize: 13, marginTop: 2},
-  section: {paddingHorizontal: 20, paddingBottom: 40},
+  profileName:   {color: '#FFFFFF', fontSize: 20, fontWeight: 'bold', marginTop: 10, marginBottom: 4},
+  email:         {color: '#A09080', fontSize: 13, marginTop: 2},
+
+  // ── Followers / Following ──
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1C1C1C',
+    borderRadius: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    marginHorizontal: 20,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  statItem:   {alignItems: 'center', flex: 1},
+  statDivider:{width: 1, height: 36, backgroundColor: '#2A2A2A'},
+  statNum:    {color: '#FFFFFF', fontSize: 26, fontWeight: 'bold'},
+  statLbl:    {color: '#A09080', fontSize: 12, marginTop: 3},
+
+  section:      {paddingHorizontal: 20, paddingBottom: 40},
   sectionTitle: {color: '#C9956C', fontSize: 16, fontWeight: 'bold', marginTop: 24, marginBottom: 8},
-  hint: {color: '#A09080', fontSize: 12, marginBottom: 12},
-  label: {color: '#A09080', fontSize: 13, marginBottom: 8, marginTop: 12},
-  roleRow: {flexDirection: 'row', gap: 8, marginBottom: 8},
+  hint:         {color: '#A09080', fontSize: 12, marginBottom: 12},
+  label:        {color: '#A09080', fontSize: 13, marginBottom: 8, marginTop: 12},
+  roleRow:      {flexDirection: 'row', gap: 8, marginBottom: 8},
   roleBtn: {
     flex: 1, backgroundColor: '#2A2A2A', borderRadius: 10,
     paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#333333',
   },
-  roleBtnActive: {backgroundColor: '#C9956C', borderColor: '#C9956C'},
-  roleBtnText: {color: '#A09080', fontSize: 13, fontWeight: '500'},
+  roleBtnActive:     {backgroundColor: '#C9956C', borderColor: '#C9956C'},
+  roleBtnText:       {color: '#A09080', fontSize: 13, fontWeight: '500'},
   roleBtnTextActive: {color: '#FFFFFF', fontWeight: 'bold'},
   input: {
     backgroundColor: '#1C1C1C', borderRadius: 12, padding: 14,
     color: '#FFFFFF', fontSize: 15, borderWidth: 1, borderColor: '#2A2A2A', marginBottom: 12,
   },
-  bioInput: {height: 100, textAlignVertical: 'top'},
-  photoRow: {flexDirection: 'row', marginBottom: 8},
-  photoBox: {marginRight: 10, position: 'relative'},
-  portfolioPhoto: {width: 100, height: 100, borderRadius: 12},
+  bioInput:      {height: 100, textAlignVertical: 'top'},
+  photoRow:      {flexDirection: 'row', marginBottom: 8},
+  photoBox:      {marginRight: 10, position: 'relative'},
+  portfolioPhoto:{width: 100, height: 100, borderRadius: 12},
   removeBtn: {
     position: 'absolute', top: -6, right: -6,
     backgroundColor: '#EF4444', borderRadius: 12,
@@ -610,27 +654,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#2A2A2A', borderRadius: 12, padding: 16,
     alignItems: 'center', marginTop: 16, borderWidth: 1, borderColor: '#C9956C',
   },
-  verifyBtnDone: {backgroundColor: '#064E3B', borderColor: '#6EE7B7'},
+  verifyBtnDone:    {backgroundColor: '#064E3B', borderColor: '#6EE7B7'},
   verifyBtnPending: {backgroundColor: '#451A03', borderColor: '#FCD34D'},
-  verifyBtnText: {color: '#C9956C', fontSize: 15, fontWeight: 'bold'},
+  verifyBtnText:    {color: '#C9956C', fontSize: 15, fontWeight: 'bold'},
   saveBtn: {
     backgroundColor: '#C9956C', borderRadius: 12,
     padding: 16, alignItems: 'center', marginTop: 16,
   },
-  saveBtnText: {color: '#FFFFFF', fontSize: 16, fontWeight: 'bold'},
-  menuSection: {marginTop: 30, marginBottom: 60},
+  saveBtnText:  {color: '#FFFFFF', fontSize: 16, fontWeight: 'bold'},
+  menuSection:  {marginTop: 30, marginBottom: 60},
   menuCard: {
     backgroundColor: '#1C1C1C', borderRadius: 16, padding: 18, marginBottom: 12,
     flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#2A2A2A',
   },
-  menuEmoji: {fontSize: 22, marginRight: 14},
-  menuText: {color: '#FFFFFF', fontSize: 16, fontWeight: '600', flex: 1},
-  menuArrow: {color: '#C9956C', fontSize: 22, fontWeight: 'bold'},
+  menuEmoji:  {fontSize: 22, marginRight: 14},
+  menuText:   {color: '#FFFFFF', fontSize: 16, fontWeight: '600', flex: 1},
+  menuArrow:  {color: '#C9956C', fontSize: 22, fontWeight: 'bold'},
   logoutCard: {
     backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 16, padding: 18,
     alignItems: 'center', marginTop: 10, borderWidth: 1, borderColor: '#DC2626',
   },
-logoutText: {color: '#FCA5A5', fontSize: 16, fontWeight: 'bold'},
+  logoutText:    {color: '#FCA5A5', fontSize: 16, fontWeight: 'bold'},
   adminCard: {
     backgroundColor: 'rgba(201,149,108,0.12)', borderRadius: 16, padding: 18,
     marginBottom: 12, flexDirection: 'row', alignItems: 'center',

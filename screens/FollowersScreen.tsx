@@ -26,26 +26,33 @@ export default function FollowersScreen({route, navigation}: any) {
   const loadAll = async () => {
     setLoading(true);
     try {
-      // Load followers
       const followersSnap = await firestore()
         .collection('users').doc(userId)
         .collection('followers').get();
       const followerIds = followersSnap.docs.map(d => d.id);
 
-      // Load following
       const followingSnap = await firestore()
         .collection('users').doc(userId)
         .collection('following').get();
-      const followingIds = followingSnap.docs.map(d => d.data().userId || d.data().id || d.id);
+      const followingIds = followingSnap.docs.map(d => {
+        const data = d.data();
+        return data.userId || data.followingId || data.id || d.id;
+      });
 
-      // Fetch user data for each
       const fetchUsers = async (ids: string[]) => {
         const users = [];
         for (const id of ids) {
+          if (!id) continue;
           try {
             const doc = await firestore().collection('users').doc(id).get();
-            if (doc.exists) users.push({id: doc.id, ...doc.data()});
-          } catch (e) {}
+            if (doc.exists) {
+              users.push({id: doc.id, ...doc.data()});
+            } else {
+              users.push({id, displayName: id, role: 'Creator'});
+            }
+          } catch (e) {
+            console.log('fetchUsers error for', id, e);
+          }
         }
         return users;
       };
@@ -65,7 +72,10 @@ export default function FollowersScreen({route, navigation}: any) {
   };
 
   const renderUser = ({item}: any) => {
-    const name = cleanName(item.displayName || item.fullName || item.name || item.email);
+    const rawName = item.displayName || item.fullName || item.name || item.email || '';
+    // If it looks like a UID (long random string, no spaces, no @), show 'Creator'
+    const looksLikeUID = rawName.length > 20 && !rawName.includes(' ') && !rawName.includes('@');
+    const name = looksLikeUID ? 'Creator' : cleanName(rawName);
     const avatarUrl = item.photoUrl || item.photoURL || null;
     const isCurrentUser = item.id === currentUser?.uid;
 
@@ -165,7 +175,6 @@ export default function FollowersScreen({route, navigation}: any) {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#0A0A0A'},
-
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 14,
@@ -178,7 +187,6 @@ const styles = StyleSheet.create({
   },
   backBtnText:  {color: '#C9956C', fontSize: 20, fontWeight: 'bold'},
   headerTitle:  {color: '#FFFFFF', fontSize: 18, fontWeight: 'bold', flex: 1},
-
   tabs: {
     flexDirection: 'row',
     borderBottomWidth: 1, borderBottomColor: '#2A2A2A',
@@ -190,7 +198,6 @@ const styles = StyleSheet.create({
   tabActive:     {borderBottomColor: '#C9956C'},
   tabText:       {color: '#A09080', fontSize: 14, fontWeight: '600'},
   tabTextActive: {color: '#C9956C', fontWeight: 'bold'},
-
   userRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#1C1C1C', borderRadius: 14,
@@ -211,10 +218,8 @@ const styles = StyleSheet.create({
   userName:   {color: '#FFFFFF', fontSize: 15, fontWeight: '700'},
   userRole:   {color: '#C9956C', fontSize: 12, marginTop: 2},
   userBio:    {color: '#A09080', fontSize: 11, marginTop: 2},
-
   viewBtn:     {backgroundColor: 'rgba(201,149,108,0.10)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#C9956C'},
   viewBtnText: {color: '#C9956C', fontSize: 12, fontWeight: '600'},
-
   emptyState:    {alignItems: 'center', paddingTop: 80, paddingHorizontal: 40},
   emptyEmoji:    {fontSize: 60, marginBottom: 16},
   emptyTitle:    {color: '#FFFFFF', fontSize: 18, fontWeight: 'bold', marginBottom: 8, textAlign: 'center'},

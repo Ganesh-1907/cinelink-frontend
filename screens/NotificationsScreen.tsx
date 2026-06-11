@@ -60,7 +60,14 @@ const getBorderColor = (type: string) => {
 
 // Which notification types navigate to a profile on tap
 const isProfileNotif = (type: string) =>
-  ['new_follower', 'connect_request', 'connect_accepted', 'message'].includes(type);
+  [
+    'new_follower',
+    'follow',
+    'follower',
+    'connect_request',
+    'connect_accepted',
+    'message',
+  ].includes(type);
 
 // Which notification types navigate to audition detail
 const isAuditionNotif = (type: string) =>
@@ -138,12 +145,19 @@ export default function NotificationsScreen({navigation}: any) {
   // ── TAP NOTIFICATION → Navigate to relevant screen ─────────
   const handleNotifTap = async (item: any) => {
   await markAsRead(item.id);
-  const senderId = item.senderId || item.viewerId || item.fromUserId;
+
+  const senderId =
+    item.senderId ||
+    item.viewerId ||
+    item.fromUserId ||
+    item.followerId;
 
   if (isCastingRequestNotif(item.type)) {
     navigation.navigate('AdminReports');
+
   } else if (isCastingApprovedNotif(item.type)) {
     navigation.navigate('DirectorDashboard');
+
   } else if (isMessageNotif(item.type) && item.chatId) {
     navigation.navigate('ChatScreen', {
       chat: {
@@ -153,24 +167,40 @@ export default function NotificationsScreen({navigation}: any) {
         lastMessage: '',
       },
     });
+
   } else if (isContestNotif(item.type)) {
     if (item.contestId) {
-      navigation.navigate('ContestDetail', {contestId: item.contestId});
+      navigation.navigate('ContestDetail', {
+        contestId: item.contestId,
+      });
     } else {
-      // Legacy notifications without contestId — open the Contests tab
-      navigation.navigate('Main', {screen: 'Contests'});
+      navigation.navigate('Main', {
+        screen: 'Contests',
+      });
     }
-  } else if (item.type === 'request_accepted' || item.type === 'request_rejected') {
 
+  } else if (
+    item.type === 'request_accepted' ||
+    item.type === 'request_rejected'
+  ) {
     navigation.navigate('MyApplications');
+
   } else if (item.type === 'comment' && item.auditionId) {
-    navigation.navigate('AuditionDetail', {auditionId: item.auditionId});
-  } else if (isProfileNotif(item.type) && senderId) {
-    navigation.navigate('PublicProfile', {userId: senderId});
+    navigation.navigate('AuditionDetail', {
+      auditionId: item.auditionId,
+    });
+
   } else if (isAuditionNotif(item.type) && item.auditionId) {
-    navigation.navigate('AuditionDetail', {auditionId: item.auditionId});
+    navigation.navigate('AuditionDetail', {
+      auditionId: item.auditionId,
+    });
+
+  } else if (isProfileNotif(item.type) && senderId) {
+    navigation.navigate('PublicProfile', {
+      userId: senderId,
+    });
   }
-}; 
+};
   // ── ACCEPT CONNECT REQUEST ───────────────────────────────────
   const handleAccept = async (notif: any) => {
     try {

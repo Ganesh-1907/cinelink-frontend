@@ -10,6 +10,30 @@ export default function SettingsScreen({navigation}: any) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [profileVisible, setProfileVisible] = useState(true);
+
+  const toggleNotifications = async (val: boolean) => {
+    setNotificationsEnabled(val);
+    try {
+      await firestore().collection('users').doc(user?.uid)
+        .update({notificationsEnabled: val});
+    } catch(e) {}
+  };
+
+  const toggleEmailNotifications = async (val: boolean) => {
+    setEmailNotifications(val);
+    try {
+      await firestore().collection('users').doc(user?.uid)
+        .update({emailNotifications: val});
+    } catch(e) {}
+  };
+
+  const toggleProfileVisible = async (val: boolean) => {
+    setProfileVisible(val);
+    try {
+      await firestore().collection('users').doc(user?.uid)
+        .update({profileVisible: val});
+    } catch(e) {}
+  };
   const [deleting, setDeleting] = useState(false);
   const user = auth().currentUser;
 
@@ -135,7 +159,7 @@ export default function SettingsScreen({navigation}: any) {
           </View>
           <Switch
             value={notificationsEnabled}
-            onValueChange={setNotificationsEnabled}
+            onValueChange={toggleNotifications}
             trackColor={{false: '#2A2A2A', true: '#C9956C'}}
             thumbColor="#fff"
           />
@@ -163,7 +187,7 @@ export default function SettingsScreen({navigation}: any) {
           </View>
           <Switch
             value={profileVisible}
-            onValueChange={setProfileVisible}
+            onValueChange={toggleProfileVisible}
             trackColor={{false: '#2A2A2A', true: '#C9956C'}}
             thumbColor="#fff"
           />

@@ -50,24 +50,25 @@ import JoinRequestsScreen from './screens/JoinRequestsScreen';
 import PrivacyPolicyScreen from './screens/PrivacyPolicyScreen';
 import TermsScreen from './screens/TermsScreen';
 import FollowersScreen from './screens/FollowersScreen';
+import FeedbackModal from './screens/FeedbackModal';
 
 export const navigationRef = createNavigationContainerRef();
-registerBackgroundHandler(); // must run before AppRegistry
+registerBackgroundHandler();
 
 const COLORS = {
-  primary: '#C9956C',
-  background: '#0A0A0A',
-  surface: '#1C1C1C',
-  textPrimary: '#FFFFFF',
+  primary:       '#C9956C',
+  background:    '#0A0A0A',
+  surface:       '#1C1C1C',
+  textPrimary:   '#FFFFFF',
   textSecondary: '#A09080',
-  border: '#2A2A2A',
+  border:        '#2A2A2A',
 };
 
 const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator();
+const Tab   = createBottomTabNavigator();
 
 function TabNavigator() {
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadCount, setUnreadCount]         = useState(0);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 
   useEffect(() => {
@@ -78,13 +79,8 @@ function TabNavigator() {
       .where('userId', '==', currentUser.uid)
       .where('read', '==', false)
       .onSnapshot(
-        snapshot => {
-          console.log('Unread notifications:', snapshot.docs.length);
-          setUnreadNotifCount(snapshot.docs.length);
-        },
-        error => {
-          console.log('NOTIF BADGE ERROR:', error.message);
-        },
+        snapshot => setUnreadNotifCount(snapshot.docs.length),
+        error => console.log('NOTIF BADGE ERROR:', error.message),
       );
     return () => unsub();
   }, []);
@@ -100,15 +96,11 @@ function TabNavigator() {
           let total = 0;
           snapshot.docs.forEach(doc => {
             const data = doc.data();
-            const unread = data.unreadCount?.[currentUser.uid] || 0;
-            total += unread;
+            total += data.unreadCount?.[currentUser.uid] || 0;
           });
-          console.log('Unread chats:', total);
           setUnreadCount(total);
         },
-        error => {
-          console.log('CHAT BADGE ERROR:', error.message);
-        },
+        error => console.log('CHAT BADGE ERROR:', error.message),
       );
     return () => unsub();
   }, []);
@@ -116,29 +108,29 @@ function TabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={{
-        headerStyle: {backgroundColor: COLORS.background},
-        headerTintColor: COLORS.textPrimary,
+        headerStyle:       {backgroundColor: COLORS.background},
+        headerTintColor:   COLORS.textPrimary,
         headerShadowVisible: false,
         tabBarStyle: {
           backgroundColor: COLORS.surface,
-          borderTopColor: COLORS.border,
-          borderTopWidth: 0,
-          height: 66,
-          paddingBottom: 8,
-          paddingTop: 8,
-          elevation: 8,
-          position: 'absolute',
+          borderTopColor:  COLORS.border,
+          borderTopWidth:  0,
+          height:          66,
+          paddingBottom:   8,
+          paddingTop:      8,
+          elevation:       8,
+          position:        'absolute',
         },
-        tabBarActiveTintColor: COLORS.primary,
+        tabBarActiveTintColor:   COLORS.primary,
         tabBarInactiveTintColor: COLORS.textSecondary,
-        tabBarLabelStyle: {fontSize: 11, fontWeight: '600'},
+        tabBarLabelStyle:        {fontSize: 11, fontWeight: '600'},
       }}>
+
       <Tab.Screen
         name="Home"
         component={HomeScreen}
         options={{
-          title: 'Home',
-          headerShown: false,
+          title: 'Home', headerShown: false,
           tabBarIcon: ({color}) => (
             <View style={{width: 28, height: 28, justifyContent: 'center', alignItems: 'center'}}>
               <Text style={{fontSize: 20, color}}>🏠</Text>
@@ -150,8 +142,7 @@ function TabNavigator() {
         name="Crew"
         component={CrewScreen}
         options={{
-          title: 'Crew',
-          headerShown: false,
+          title: 'Crew', headerShown: false,
           tabBarIcon: ({color}) => <Text style={{fontSize: 20, color}}>🎥</Text>,
         }}
       />
@@ -159,8 +150,7 @@ function TabNavigator() {
         name="Contests"
         component={ContestScreen}
         options={{
-          title: 'Contests',
-          headerShown: false,
+          title: 'Contests', headerShown: false,
           tabBarIcon: ({color}) => <Text style={{fontSize: 20, color}}>🏆</Text>,
         }}
       />
@@ -168,8 +158,7 @@ function TabNavigator() {
         name="Chats"
         component={ChatListScreen}
         options={{
-          title: 'Chats',
-          headerTitle: 'Messages',
+          title: 'Chats', headerTitle: 'Messages',
           tabBarIcon: ({color}) => (
             <View style={{width: 28, height: 28, justifyContent: 'center', alignItems: 'center'}}>
               <Text style={{fontSize: 20, color}}>💬</Text>
@@ -193,8 +182,7 @@ function TabNavigator() {
         name="Profile"
         component={ProfileScreen}
         options={{
-          title: 'Profile',
-          headerShown: false,
+          title: 'Profile', headerShown: false,
           tabBarIcon: ({color}) => <Text style={{fontSize: 20, color}}>👤</Text>,
         }}
       />
@@ -206,44 +194,44 @@ function MainStack() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: {backgroundColor: COLORS.background},
+        headerStyle:    {backgroundColor: COLORS.background},
         headerTintColor: COLORS.textPrimary,
         headerShadowVisible: false,
-        contentStyle: {backgroundColor: COLORS.background},
+        contentStyle:   {backgroundColor: COLORS.background},
       }}>
-      <Stack.Screen name="Main" component={TabNavigator} options={{headerShown: false}} />
+      <Stack.Screen name="Main"             component={TabNavigator}           options={{headerShown: false}} />
       <Stack.Screen name="SuggestedFollows" component={SuggestedFollowsScreen} options={{headerShown: false}} />
-      <Stack.Screen name="CrewMarketplace" component={CrewMarketplaceScreen} options={{title: 'Crew Marketplace'}} />
-      <Stack.Screen name="MovieDetails" component={MovieDetails} options={{title: 'Movie Details'}} />
-      <Stack.Screen name="PostAudition" component={PostAuditionScreen} options={{title: 'Post Audition'}} />
-      <Stack.Screen name="AuditionDetail" component={AuditionDetailScreen} options={{title: 'Audition Details'}} />
-      <Stack.Screen name="BrowseAuditions" component={BrowseAuditionsScreen} options={{headerShown: false}} />
-      <Stack.Screen name="MyApplications" component={MyApplicationsScreen} options={{title: 'My Applications'}} />
+      <Stack.Screen name="CrewMarketplace"  component={CrewMarketplaceScreen}  options={{title: 'Crew Marketplace'}} />
+      <Stack.Screen name="MovieDetails"     component={MovieDetails}           options={{title: 'Movie Details'}} />
+      <Stack.Screen name="PostAudition"     component={PostAuditionScreen}     options={{title: 'Post Audition'}} />
+      <Stack.Screen name="AuditionDetail"   component={AuditionDetailScreen}   options={{title: 'Audition Details'}} />
+      <Stack.Screen name="BrowseAuditions"  component={BrowseAuditionsScreen}  options={{headerShown: false}} />
+      <Stack.Screen name="MyApplications"   component={MyApplicationsScreen}   options={{title: 'My Applications'}} />
       <Stack.Screen name="DirectorDashboard" component={DirectorDashboardScreen} options={{title: 'Director Dashboard'}} />
-      <Stack.Screen name="UploadFilm" component={UploadFilmScreen} options={{title: 'Upload Short Film', headerShown: false}} />
-      <Stack.Screen name="FilmDetail" component={FilmDetailScreen} options={{title: 'Film Details'}} />
-      <Stack.Screen name="MyFilms" component={MyFilmsScreen} options={{title: 'My Films'}} />
-      <Stack.Screen name="ChatScreen" component={ChatScreen} options={{title: 'Chat', headerShown: false}} />
-      <Stack.Screen name="Notifications" component={NotificationsScreen} options={{title: 'Notifications'}} />
-      <Stack.Screen name="PostContest" component={PostContestScreen} options={{title: 'Create Contest'}} />
-      <Stack.Screen name="ContestDetail" component={ContestDetailScreen} options={{title: 'Contest Details'}} />
-      <Stack.Screen name="MyContests" component={MyContestsScreen} options={{title: 'My Contests'}} />
-      <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{title: 'Public Profile'}} />
-      <Stack.Screen name="Payment" component={PaymentScreen} options={{title: 'Payment'}} />
-      <Stack.Screen name="SavedAuditions" component={SavedAuditionsScreen} options={{title: 'Saved Auditions'}} />
-      <Stack.Screen name="Settings" component={SettingsScreen} options={{title: 'Settings'}} />
-      <Stack.Screen name="AIAssistant" component={AIAssistantScreen} options={{title: '🤖 AI Assistant'}} />
-      <Stack.Screen name="QuickPost" component={QuickPostScreen} options={{title: '⚡ Quick Post'}} />
-      <Stack.Screen name="AdminReports" component={AdminReportsScreen} options={{title: '🛡️ Admin Dashboard'}} />
-      <Stack.Screen name="ImageViewer" component={ImageViewerScreen} options={{headerShown: false, animation: 'fade'}} />
-      <Stack.Screen name="CastingRequest" component={CastingRequestScreen} options={{title: 'Request to Post Auditions'}} />
-      <Stack.Screen name="CreateProject" component={CreateProjectScreen} />
-      <Stack.Screen name="BrowseProjects" component={BrowseProjectsScreen} options={{headerShown: false}} />
-      <Stack.Screen name="ProjectDetail" component={ProjectDetailScreen} options={{headerShown: false}} />
-      <Stack.Screen name="JoinRequests" component={JoinRequestsScreen} options={{headerShown: false}} />
-      <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} options={{headerShown: false}} />
-      <Stack.Screen name="Terms" component={TermsScreen} options={{headerShown: false}} />
-      <Stack.Screen name="Followers" component={FollowersScreen} options={{headerShown: false}} />
+      <Stack.Screen name="UploadFilm"       component={UploadFilmScreen}       options={{title: 'Upload Short Film', headerShown: false}} />
+      <Stack.Screen name="FilmDetail"       component={FilmDetailScreen}       options={{title: 'Film Details'}} />
+      <Stack.Screen name="MyFilms"          component={MyFilmsScreen}          options={{title: 'My Films'}} />
+      <Stack.Screen name="ChatScreen"       component={ChatScreen}             options={{title: 'Chat', headerShown: false}} />
+      <Stack.Screen name="Notifications"    component={NotificationsScreen}    options={{title: 'Notifications'}} />
+      <Stack.Screen name="PostContest"      component={PostContestScreen}      options={{title: 'Create Contest'}} />
+      <Stack.Screen name="ContestDetail"    component={ContestDetailScreen}    options={{title: 'Contest Details'}} />
+      <Stack.Screen name="MyContests"       component={MyContestsScreen}       options={{title: 'My Contests'}} />
+      <Stack.Screen name="PublicProfile"    component={PublicProfileScreen}    options={{title: 'Public Profile'}} />
+      <Stack.Screen name="Payment"          component={PaymentScreen}          options={{title: 'Payment'}} />
+      <Stack.Screen name="SavedAuditions"   component={SavedAuditionsScreen}   options={{title: 'Saved Auditions'}} />
+      <Stack.Screen name="Settings"         component={SettingsScreen}         options={{title: 'Settings'}} />
+      <Stack.Screen name="AIAssistant"      component={AIAssistantScreen}      options={{title: '🤖 AI Assistant'}} />
+      <Stack.Screen name="QuickPost"        component={QuickPostScreen}        options={{title: '⚡ Quick Post'}} />
+      <Stack.Screen name="AdminReports"     component={AdminReportsScreen}     options={{title: '🛡️ Admin Dashboard'}} />
+      <Stack.Screen name="ImageViewer"      component={ImageViewerScreen}      options={{headerShown: false, animation: 'fade'}} />
+      <Stack.Screen name="CastingRequest"   component={CastingRequestScreen}   options={{title: 'Request to Post Auditions'}} />
+      <Stack.Screen name="CreateProject"    component={CreateProjectScreen} />
+      <Stack.Screen name="BrowseProjects"   component={BrowseProjectsScreen}   options={{headerShown: false}} />
+      <Stack.Screen name="ProjectDetail"    component={ProjectDetailScreen}    options={{headerShown: false}} />
+      <Stack.Screen name="JoinRequests"     component={JoinRequestsScreen}     options={{headerShown: false}} />
+      <Stack.Screen name="PrivacyPolicy"    component={PrivacyPolicyScreen}    options={{headerShown: false}} />
+      <Stack.Screen name="Terms"            component={TermsScreen}            options={{headerShown: false}} />
+      <Stack.Screen name="Followers"        component={FollowersScreen}        options={{headerShown: false}} />
     </Stack.Navigator>
   );
 }
@@ -251,29 +239,33 @@ function MainStack() {
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{headerShown: false}}>
-      <Stack.Screen name="Auth" component={AuthScreen} />
+      <Stack.Screen name="Auth"         component={AuthScreen} />
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
-      <Stack.Screen name="Terms" component={TermsScreen} />
+      <Stack.Screen name="Terms"        component={TermsScreen} />
     </Stack.Navigator>
   );
 }
 
 function App(): JSX.Element {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+  const [user, setUser]                         = useState<any>(null);
+  const [loading, setLoading]                   = useState(true);
+  const [showOnboarding, setShowOnboarding]     = useState<boolean | null>(null);
   const [showSuggestedFollows, setShowSuggestedFollows] = useState(false);
+  const [showFeedback, setShowFeedback]         = useState(false);
 
+  // ── Onboarding check ──────────────────────────────────────
   useEffect(() => {
     AsyncStorage.getItem('onboarding_done').then(val => {
       setShowOnboarding(val !== 'true');
     });
   }, []);
 
+  // ── Crashlytics ───────────────────────────────────────────
   useEffect(() => {
     if (!__DEV__) crashlytics().log('CineLink App started');
   }, []);
 
+  // ── Auth state ────────────────────────────────────────────
   useEffect(() => {
     const subscriber = auth().onAuthStateChanged(async userState => {
       setUser(userState);
@@ -292,10 +284,12 @@ function App(): JSX.Element {
     return subscriber;
   }, []);
 
+  // ── Notifications ─────────────────────────────────────────
   useEffect(() => {
     if (user) initNotifications();
   }, [user]);
 
+  // ── Ban check ─────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
     const checkBan = async () => {
@@ -310,33 +304,58 @@ function App(): JSX.Element {
     checkBan();
   }, [user]);
 
+  // ── Presence ──────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
-
     const setPresence = async (isOnline: boolean) => {
       try {
         await firestore().collection('users').doc(user.uid)
           .set({isOnline, lastSeen: firestore.FieldValue.serverTimestamp()}, {merge: true});
       } catch (e) {console.log(e);}
     };
-
-    // Mark online once on login
     setPresence(true);
-
-    // Refresh every 10 minutes instead of every 60 seconds
-    // 60s = 1,440 writes/day → 10min = 144 writes/day
     const interval = setInterval(() => setPresence(true), 10 * 60 * 1000);
-
     return () => {
       clearInterval(interval);
       setPresence(false);
     };
   }, [user]);
 
+  // ── Feedback popup — shows once after 1 hour ──────────────
+  useEffect(() => {
+    if (!user) return;
+    const checkFeedback = async () => {
+      try {
+        // Already shown — never show again
+        const done = await AsyncStorage.getItem('feedback_done');
+        if (done === 'true') return;
+
+        // Record first open time
+        let firstOpen = await AsyncStorage.getItem('first_open_time');
+        if (!firstOpen) {
+          await AsyncStorage.setItem('first_open_time', Date.now().toString());
+          return;
+        }
+
+        // Show after 1 hour (3600000 ms)
+        const elapsed = Date.now() - parseInt(firstOpen, 10);
+        if (elapsed >= 3600000) {
+          setShowFeedback(true);
+          await AsyncStorage.setItem('feedback_done', 'true');
+        }
+      } catch (e) {console.log(e);}
+    };
+    // Check 5 seconds after login
+    const timer = setTimeout(checkFeedback, 5000);
+    return () => clearTimeout(timer);
+  }, [user]);
+
+  // ── BootSplash ────────────────────────────────────────────
   useEffect(() => {
     BootSplash.hide({fade: true});
   }, []);
 
+  // ── Loading ───────────────────────────────────────────────
   if (loading || showOnboarding === null) {
     return (
       <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background}}>
@@ -346,6 +365,7 @@ function App(): JSX.Element {
     );
   }
 
+  // ── Onboarding ────────────────────────────────────────────
   if (showOnboarding) {
     return (
       <>
@@ -355,6 +375,7 @@ function App(): JSX.Element {
     );
   }
 
+  // ── Suggested Follows ─────────────────────────────────────
   if (user && showSuggestedFollows) {
     return (
       <>
@@ -373,10 +394,17 @@ function App(): JSX.Element {
     );
   }
 
+  // ── Main App ──────────────────────────────────────────────
   return (
     <NavigationContainer ref={navigationRef} onReady={() => setNavigator(navigationRef)}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
       {user ? <MainStack /> : <AuthStack />}
+
+      {/* ── Feedback Modal — shown once after 1 hour ── */}
+      <FeedbackModal
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+      />
     </NavigationContainer>
   );
 }
