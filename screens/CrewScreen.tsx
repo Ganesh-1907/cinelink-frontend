@@ -27,19 +27,50 @@ const cleanName = (raw: string | null | undefined): string => {
 };
 
 export default function CrewScreen({navigation}: any) {
-  const [results, setResults]     = useState<any[]>([]);
-  const [loading, setLoading]     = useState(false);
+  const [results, setResults]       = useState<any[]>([]);
+  const [loading, setLoading]       = useState(false);
   const [searchText, setSearchText] = useState('');
-  const [searched, setSearched]   = useState(false);
-  const currentUser = auth().currentUser;
+  const [searched, setSearched]     = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<{[key: string]: 'connected' | 'pending' | 'none'}>({});
 
-  const searchUsers = async (text: string) => {
+  const currentUser = auth().currentUser;
+  const searchTimeout = React.useRef<any>(null);
+
+  const checkConnectionStatus = async (otherUserId: string) => {
+    if (connectionStatus[otherUserId]) return;
+    try {
+      const [reqSnap, connSnap] = await Promise.all([
+        firestore()
+          .collection('connectionRequests')
+          .where('fromUserId', '==', currentUser?.uid)
+          .where('toUserId', '==', otherUserId)
+          .get(),
+        firestore()
+          .collection('connections')
+          .where('users', 'array-contains', currentUser?.uid)
+          .get(),
+      ]);
+      const isConnected = connSnap.docs.some(d => d.data().users?.includes(otherUserId));
+      const isPending = !reqSnap.empty;
+      setConnectionStatus(prev => ({
+        ...prev,
+        [otherUserId]: isConnected ? 'connected' : isPending ? 'pending' : 'none',
+      }));
+    } catch (e) {}
+  };
+
+  const searchUsers = (text: string) => {
     setSearchText(text);
     if (text.trim().length < 2) {
       setResults([]);
       setSearched(false);
       return;
     }
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => doSearch(text), 400);
+  };
+
+  const doSearch = async (text: string) => {
     setLoading(true);
     setSearched(true);
     try {
@@ -50,7 +81,9 @@ export default function CrewScreen({navigation}: any) {
         .filter((u: any) => {
           if (u.id === currentUser?.uid) return false;
           if (u.email === ADMIN_EMAIL) return false;
-          const name = cleanName(u.displayName || u.fullName || u.name || u.email).toLowerCase();
+          const name = cleanName(
+            u.displayName || u.fullName || u.name || u.email,
+          ).toLowerCase();
           const role = (u.role || '').toLowerCase();
           const bio  = (u.bio  || '').toLowerCase();
           return name.includes(q) || role.includes(q) || bio.includes(q);
@@ -68,7 +101,6 @@ export default function CrewScreen({navigation}: any) {
     try {
       const currentUserName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
 
-      // Check if already sent
       const existing = await firestore()
         .collection('connectionRequests')
         .where('fromUserId', '==', currentUser.uid)
@@ -79,7 +111,6 @@ export default function CrewScreen({navigation}: any) {
         return;
       }
 
-      // Check if already connected
       const connected = await firestore()
         .collection('connections')
         .where('users', 'array-contains', currentUser.uid)
@@ -93,26 +124,28 @@ export default function CrewScreen({navigation}: any) {
       }
 
       await firestore().collection('connectionRequests').add({
-        fromUserId:   currentUser.uid,
-        fromUserName: currentUserName,
+        fromUserId:    currentUser.uid,
+        fromUserName:  currentUserName,
         fromUserEmail: currentUser.email,
-        toUserId:     otherUser.id,
-        toUserName:   cleanName(otherUser.displayName || otherUser.fullName || otherUser.name || otherUser.email),
-        status:       'pending',
-        createdAt:    firestore.FieldValue.serverTimestamp(),
+        toUserId:      otherUser.id,
+        toUserName:    cleanName(otherUser.displayName || otherUser.fullName || otherUser.name || otherUser.email),
+        status:        'pending',
+        createdAt:     firestore.FieldValue.serverTimestamp(),
       });
 
       await firestore().collection('notifications').add({
-        userId:      otherUser.id,
-        type:        'connect_request',
-        title:       '🤝 Connection Request',
-        message:     `${currentUserName} wants to connect with you`,
-        senderId:    currentUser.uid,
-        senderName:  currentUserName,
-        read:        false,
-        createdAt:   firestore.FieldValue.serverTimestamp(),
+        userId:     otherUser.id,
+        type:       'connect_request',
+        title:      '🤝 Connection Request',
+        message:    `${currentUserName} wants to connect with you`,
+        senderId:   currentUser.uid,
+        senderName: currentUserName,
+        read:       false,
+        createdAt:  firestore.FieldValue.serverTimestamp(),
       });
 
+      // Update local status immediately
+      setConnectionStatus(prev => ({...prev, [otherUser.id]: 'pending'}));
       Alert.alert('Request Sent! 🤝', `Connection request sent to ${cleanName(otherUser.displayName || otherUser.name || otherUser.email)}`);
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Could not send request.');
@@ -122,6 +155,9 @@ export default function CrewScreen({navigation}: any) {
   const renderUser = ({item}: any) => {
     const displayName = cleanName(item.displayName || item.fullName || item.name || item.email);
     const avatarUrl   = item.photoUrl || item.photoURL || null;
+    const status      = connectionStatus[item.id] || 'none';
+    checkConnectionStatus(item.id);
+
     return (
       <TouchableOpacity
         style={styles.userCard}
@@ -141,15 +177,28 @@ export default function CrewScreen({navigation}: any) {
             {item.verificationStatus === 'verified' && <Text style={{fontSize: 14}}>✅</Text>}
           </View>
           <Text style={styles.userRole}>🎭 {item.role || 'Creator'}</Text>
-          {item.bio      ? <Text style={styles.userBio}      numberOfLines={1}>{item.bio}</Text>      : null}
-          {item.location ? <Text style={styles.userLocation}>{' '}📍 {item.location}</Text>           : null}
+          {item.bio      ? <Text style={styles.userBio}      numberOfLines={1}>{item.bio}</Text> : null}
+          {item.location ? <Text style={styles.userLocation}>📍 {item.location}</Text>           : null}
         </View>
 
-        <TouchableOpacity
-          style={styles.connectBtn}
-          onPress={() => sendConnectRequest(item)}>
-          <Text style={styles.connectText}>🤝</Text>
-        </TouchableOpacity>
+        {status === 'connected' ? (
+          <View style={[styles.connectBtn, {borderColor: '#4ADE80'}]}>
+            <Text style={styles.connectText}>✅</Text>
+          </View>
+        ) : status === 'pending' ? (
+          <View style={[styles.connectBtn, {borderColor: '#FBBF24'}]}>
+            <Text style={styles.connectText}>⏳</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.connectBtn}
+            onPress={e => {
+              e.stopPropagation?.();
+              sendConnectRequest(item);
+            }}>
+            <Text style={styles.connectText}>🤝</Text>
+          </TouchableOpacity>
+        )}
       </TouchableOpacity>
     );
   };
@@ -159,13 +208,11 @@ export default function CrewScreen({navigation}: any) {
   return (
     <SafeAreaView style={styles.container}>
 
-      {/* HEADER */}
       <View style={styles.header}>
         <Text style={styles.title}>🎥 Find Creators</Text>
         <Text style={styles.subtitle}>Search to discover cinema professionals</Text>
       </View>
 
-      {/* SEARCH BAR */}
       <View style={styles.searchContainer}>
         <Text style={styles.searchIcon}>🔍</Text>
         <TextInput
@@ -184,7 +231,6 @@ export default function CrewScreen({navigation}: any) {
         )}
       </View>
 
-      {/* ROOMS BANNER */}
       <TouchableOpacity
         style={styles.roomsBanner}
         onPress={() => navigation.navigate('BrowseProjects')}>
@@ -195,16 +241,13 @@ export default function CrewScreen({navigation}: any) {
         <Text style={styles.roomsArrow}>→</Text>
       </TouchableOpacity>
 
-      {/* CONTENT */}
       {!searched ? (
-        /* ── Empty / Suggestions state ── */
         <View style={styles.emptyState}>
           <Text style={styles.emptyEmoji}>🔍</Text>
           <Text style={styles.emptyTitle}>Search for Creators</Text>
           <Text style={styles.emptySubtitle}>
             Type a name, role or location to find{'\n'}actors, directors and crew members
           </Text>
-
           <View style={styles.tipsBox}>
             <Text style={styles.tipsTitle}>Try searching for:</Text>
             <View style={styles.tipsChipsRow}>
@@ -241,7 +284,6 @@ export default function CrewScreen({navigation}: any) {
           }
         />
       )}
-
     </SafeAreaView>
   );
 }
@@ -251,7 +293,6 @@ const styles = StyleSheet.create({
   header:     {padding: 20, paddingTop: 10, paddingBottom: 8},
   title:      {color: C.textPrimary,   fontSize: 26, fontWeight: 'bold', marginBottom: 4},
   subtitle:   {color: C.textSecondary, fontSize: 14},
-
   searchContainer: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: C.card, marginHorizontal: 16, marginBottom: 14,
@@ -261,7 +302,6 @@ const styles = StyleSheet.create({
   searchIcon:  {fontSize: 16, marginRight: 8},
   searchInput: {flex: 1, color: C.textPrimary, fontSize: 14},
   clearText:   {color: C.textTertiary, fontSize: 18, fontWeight: 'bold', padding: 4},
-
   roomsBanner: {
     backgroundColor: C.card, borderRadius: 14, padding: 14,
     marginHorizontal: 16, marginBottom: 16,
@@ -271,33 +311,19 @@ const styles = StyleSheet.create({
   roomsTitle: {color: C.textPrimary,   fontSize: 15, fontWeight: 'bold'},
   roomsSub:   {color: C.textSecondary, fontSize: 12, marginTop: 3},
   roomsArrow: {color: C.primary,       fontSize: 22, fontWeight: 'bold'},
-
-  // ── Empty / Tips ────────────────────────────────────────────
   emptyState:    {alignItems: 'center', paddingTop: 40, paddingHorizontal: 30},
   emptyEmoji:    {fontSize: 60, marginBottom: 16},
   emptyTitle:    {color: C.textPrimary,   fontSize: 20, fontWeight: 'bold', marginBottom: 8},
   emptySubtitle: {color: C.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 22},
-
   tipsBox:      {marginTop: 24, alignItems: 'center', width: '100%'},
   tipsTitle:    {color: C.textSecondary, fontSize: 13, marginBottom: 12},
-  tipsChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 10,
-  },
+  tipsChipsRow: {flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10},
   tipChip: {
-    color: C.primary,
-    backgroundColor: C.primaryFaint,
-    borderRadius: 20,
-    paddingHorizontal: 16, paddingVertical: 8,
-    fontSize: 13, fontWeight: '600',
-    borderWidth: 1, borderColor: C.primary,
+    color: C.primary, backgroundColor: C.primaryFaint,
+    borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8,
+    fontSize: 13, fontWeight: '600', borderWidth: 1, borderColor: C.primary,
   },
-
   resultsCount: {color: C.textSecondary, fontSize: 13, marginBottom: 12},
-
-  // ── User Card ────────────────────────────────────────────────
   userCard: {
     backgroundColor: C.card, borderRadius: 14, padding: 12,
     marginBottom: 10, borderWidth: 1, borderColor: C.border,

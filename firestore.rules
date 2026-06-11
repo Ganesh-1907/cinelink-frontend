@@ -1,0 +1,251 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isLoggedIn() { return request.auth != null; }
+    function isAdmin() { return request.auth.token.email == 'anilkumardevarakonda03@gmail.com'; }
+    function isOwner(userId) { return request.auth.uid == userId; }
+    function isNotBanned() {
+      return !exists(/databases/$(database)/documents/bannedUsers/$(request.auth.uid));
+    }
+    function isApprovedDirector() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isApprovedDirector == true;
+    }
+
+    // ── Users ────────────────────────────────────────────────
+    match /users/{userId} {
+      // Only return safe fields to other users — FCM token stays private
+      allow read: if isLoggedIn();
+      allow create: if isLoggedIn() && isOwner(userId);
+      allow update: if isLoggedIn() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+    match /users/{userId}/followers/{followerId} {
+      allow read: if isLoggedIn();
+      allow write: if isLoggedIn() && isOwner(followerId);
+    }
+    match /users/{userId}/following/{followingId} {
+      allow read: if isLoggedIn();
+      allow write: if isLoggedIn() && isOwner(userId);
+    }
+
+    // ── Chats ────────────────────────────────────────────────
+    match /chats/{chatId} {
+      // Only participants can read/write the chat
+      allow read, write: if isLoggedIn()
+        && isNotBanned()
+        && request.auth.uid in resource.data.participants;
+      // Allow create if you're adding yourself as participant
+      allow create: if isLoggedIn()
+        && isNotBanned()
+        && request.auth.uid in request.resource.data.participants;
+      match /messages/{messageId} {
+        allow read: if isLoggedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow create: if isLoggedIn()
+          && isNotBanned()
+          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+          && request.resource.data.senderId == request.auth.uid;
+        allow delete: if isLoggedIn()
+          && resource.data.senderId == request.auth.uid;
+        allow update: if isAdmin();
+      }
+    }
+
+    // ── Feed Posts ───────────────────────────────────────────
+    match /feedPosts/{postId} {
+      allow read: if isLoggedIn();
+      allow create, update, delete: if isAdmin();
+      match /comments/{commentId} {
+        allow read: if isLoggedIn();
+        allow create: if isLoggedIn() && isNotBanned();
+        allow delete: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      }
+    }
+
+    // ── Auditions ────────────────────────────────────────────
+    match /auditions/{auditionId} {
+      allow read: if isLoggedIn();
+      allow create: if isLoggedIn() && (isAdmin() || isApprovedDirector()) && isNotBanned();
+      allow update: if isLoggedIn() && (resource.data.directorId == request.auth.uid || isAdmin());
+      allow delete: if isLoggedIn() && (resource.data.directorId == request.auth.uid || isAdmin());
+      match /comments/{commentId} {
+        allow read: if isLoggedIn();
+        allow create: if isLoggedIn() && isNotBanned();
+        allow delete: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      }
+    }
+
+    // ── Applications ─────────────────────────────────────────
+    match /applications/{appId} {
+      allow read: if isLoggedIn() && (
+        resource.data.applicantId == request.auth.uid ||
+        resource.data.directorId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isLoggedIn() && isNotBanned();
+      allow update: if isLoggedIn() && (resource.data.directorId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // ── Films ────────────────────────────────────────────────
+    match /films/{filmId} {
+      allow read: if isLoggedIn();
+      allow create: if isLoggedIn() && isNotBanned();
+      allow update: if isLoggedIn() && (resource.data.directorId == request.auth.uid || isAdmin());
+      allow delete: if isLoggedIn() && (resource.data.directorId == request.auth.uid || isAdmin());
+      match /comments/{commentId} {
+        allow read: if isLoggedIn();
+        allow create: if isLoggedIn() && isNotBanned();
+        allow delete: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      }
+    }
+
+    // ── Contests ─────────────────────────────────────────────
+    match /contests/{contestId} {
+      allow read: if isLoggedIn();
+      // Admin OR approved director can create contests
+      allow create: if isLoggedIn() && (isAdmin() || isApprovedDirector()) && isNotBanned();
+      // Only admin can update/delete
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Contest Entries ──────────────────────────────────────
+    match /contestEntries/{entryId} {
+      allow read: if isLoggedIn();
+      // Anyone not banned can submit
+      allow create: if isLoggedIn() && isNotBanned();
+      // Only admin can update jury score/finalScore
+      // Entry owner can update only their own non-score fields
+      allow update: if isLoggedIn() && (
+        isAdmin() ||
+        (
+          resource.data.userId == request.auth.uid &&
+          // Prevent users from changing votes/scores themselves
+          !('votes' in request.resource.data) &&
+          !('juryScore' in request.resource.data) &&
+          !('finalScore' in request.resource.data)
+        )
+      );
+      allow delete: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ── Notifications ────────────────────────────────────────
+    match /notifications/{notifId} {
+      // Only the recipient can read their own notifications
+      allow read: if isLoggedIn() && resource.data.userId == request.auth.uid;
+      // Any logged-in user can create (needed for contest/chat/follow notifications)
+      allow create: if isLoggedIn() && isNotBanned();
+      // Only recipient can mark as read / delete their own
+      allow update: if isLoggedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ── Payments ─────────────────────────────────────────────
+    match /payments/{paymentId} {
+      allow read: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isLoggedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Reports ──────────────────────────────────────────────
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isLoggedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Banned Users ─────────────────────────────────────────
+    match /bannedUsers/{userId} {
+      allow read: if isLoggedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── Projects ─────────────────────────────────────────────
+    match /projects/{projectId} {
+      allow read: if isLoggedIn();
+      allow create: if isLoggedIn() && isNotBanned();
+      allow update: if isLoggedIn() && (resource.data.directorId == request.auth.uid || isAdmin());
+      allow delete: if isLoggedIn() && (resource.data.directorId == request.auth.uid || isAdmin());
+      match /members/{memberId} {
+        allow read: if isLoggedIn();
+        allow write: if isLoggedIn() && (
+          get(/databases/$(database)/documents/projects/$(projectId)).data.directorId == request.auth.uid ||
+          isAdmin()
+        );
+      }
+      match /requests/{requestId} {
+        allow read: if isLoggedIn() && (
+          resource.data.userId == request.auth.uid ||
+          get(/databases/$(database)/documents/projects/$(projectId)).data.directorId == request.auth.uid
+        );
+        allow create: if isLoggedIn() && isNotBanned();
+        allow update: if isLoggedIn() &&
+          get(/databases/$(database)/documents/projects/$(projectId)).data.directorId == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ── Saved Auditions ──────────────────────────────────────
+    match /savedAuditions/{docId} {
+      allow read: if isLoggedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isLoggedIn();
+      allow delete: if isLoggedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ── Casting Requests ─────────────────────────────────────
+    match /castingRequests/{requestId} {
+      allow read: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isLoggedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Cine Reels ───────────────────────────────────────────
+    match /cinereels/{reelId} {
+      allow read: if isLoggedIn();
+      allow create: if isLoggedIn() && isNotBanned();
+      allow update: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ── Crew Posts ───────────────────────────────────────────
+    match /crewPosts/{postId} {
+      allow read: if isLoggedIn();
+      allow create: if isLoggedIn() && isNotBanned();
+      allow update, delete: if isLoggedIn() && (resource.data.createdById == request.auth.uid || isAdmin());
+    }
+
+    // ── Verification Requests ────────────────────────────────
+    match /verificationRequests/{reqId} {
+      allow read: if isAdmin();
+      allow create: if isLoggedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Push Notifications (legacy) ──────────────────────────
+    match /pushNotifications/{notifId} {
+      allow read, write: if isLoggedIn();
+    }
+
+    // ── Connection Requests ──────────────────────────────────
+    match /connectionRequests/{reqId} {
+      allow read: if isLoggedIn() && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid
+      );
+      allow create: if isLoggedIn();
+      allow update: if isLoggedIn() && resource.data.toUserId == request.auth.uid;
+      allow delete: if isLoggedIn() && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid
+      );
+    }
+
+    // ── Connections ──────────────────────────────────────────
+    match /connections/{connId} {
+      allow read: if isLoggedIn() && request.auth.uid in resource.data.users;
+      allow create: if isLoggedIn() && request.auth.uid in request.resource.data.users;
+      allow delete: if isLoggedIn() && request.auth.uid in resource.data.users;
+    }
+  }
+}

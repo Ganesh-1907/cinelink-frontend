@@ -53,31 +53,36 @@ export default function ChatListScreen({navigation}: any) {
   }, []);
 
   const loadUserData = async (chatList: any[]) => {
-    const names: any = {};
-    const photos: any = {};
-    for (const chat of chatList) {
-      const otherId = (chat.participants as string[])?.find(
-        (id: string) => id !== currentUser?.uid,
+    // Only fetch users we haven't loaded yet
+    const newIds = chatList
+      .map(chat =>
+        (chat.participants as string[])?.find(id => id !== currentUser?.uid),
+      )
+      .filter((id): id is string => !!id && !userNames[id]);
+
+    if (newIds.length === 0) return;
+
+    try {
+      const docs = await Promise.all(
+        newIds.map(id => firestore().collection('users').doc(id).get()),
       );
-      if (otherId && !names[otherId]) {
-        try {
-          const doc = await firestore().collection('users').doc(otherId).get();
-          if (doc.exists) {
-            const data = doc.data() as any;
-            const resolvedName =
-              data?.fullName || data?.displayName || data?.name ||
-              cleanName(data?.email) || 'User';
-            names[otherId] = cleanName(resolvedName);
-            const photo = data?.photoUrl || data?.photoURL || null;
-            if (photo) photos[otherId] = photo;
-          }
-        } catch (e) {
-          console.log('❌ USER DATA LOAD ERROR:', e);
+      const names: any = {};
+      const photos: any = {};
+      docs.forEach((doc, i) => {
+        if (doc.exists) {
+          const data = doc.data() as any;
+          names[newIds[i]] = cleanName(
+            data?.fullName || data?.displayName || data?.name || data?.email,
+          ) || 'User';
+          const photo = data?.photoUrl || data?.photoURL || null;
+          if (photo) photos[newIds[i]] = photo;
         }
-      }
+      });
+      setUserNames((prev: any) => ({...prev, ...names}));
+      setUserPhotos((prev: any) => ({...prev, ...photos}));
+    } catch (e) {
+      console.log('❌ USER DATA LOAD ERROR:', e);
     }
-    setUserNames((prev: any) => ({...prev, ...names}));
-    setUserPhotos((prev: any) => ({...prev, ...photos}));
   };
 
   const openChat = (chat: any) => navigation.navigate('ChatScreen', {chat});
@@ -90,13 +95,20 @@ export default function ChatListScreen({navigation}: any) {
     ]);
   };
 
-  const deleteChat = async (chatId: string) => {
+const deleteChat = async (chatId: string) => {
     Alert.alert('Delete Chat', 'Are you sure?', [
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
           try {
-            await firestore().collection('chats').doc(chatId).delete();
+            // Delete all messages first
+            const messages = await firestore()
+              .collection('chats').doc(chatId)
+              .collection('messages').get();
+            const batch = firestore().batch();
+            messages.docs.forEach(doc => batch.delete(doc.ref));
+            batch.delete(firestore().collection('chats').doc(chatId));
+            await batch.commit();
           } catch (e) {console.log(e);}
         },
       },
@@ -104,14 +116,23 @@ export default function ChatListScreen({navigation}: any) {
     ]);
   };
 
-  const blockUser = async (otherId: string, otherName: string) => {
+const blockUser = async (otherId: string, otherName: string) => {
     Alert.alert('Block User', `Block ${otherName}?`, [
       {
         text: 'Block', style: 'destructive',
         onPress: async () => {
           try {
+            const chatId = [currentUser?.uid, otherId].sort().join('_');
             await firestore().collection('users').doc(currentUser?.uid)
               .update({blockedUsers: firestore.FieldValue.arrayUnion(otherId)});
+            // Also delete the chat
+            const messages = await firestore()
+              .collection('chats').doc(chatId)
+              .collection('messages').get();
+            const batch = firestore().batch();
+            messages.docs.forEach(doc => batch.delete(doc.ref));
+            batch.delete(firestore().collection('chats').doc(chatId));
+            await batch.commit();
             Alert.alert('Blocked!', `${otherName} has been blocked.`);
           } catch (e) {console.log(e);}
         },
@@ -126,10 +147,6 @@ export default function ChatListScreen({navigation}: any) {
   const otherId = (chat.participants as string[])?.find(
     (id: string) => id !== currentUser?.uid,
   );
-
-  console.log('CHAT DATA:', JSON.stringify(chat, null, 2));
-  console.log('OTHER USER ID:', otherId);
-  console.log('RESOLVED NAME FROM USERS:', userNames[otherId || '']);
 
   const resolvedName =
     (otherId ? userNames[otherId] : null) ||

@@ -2,8 +2,9 @@
 import {
   View, Text, StyleSheet, FlatList, TextInput,
   TouchableOpacity, KeyboardAvoidingView, Platform,
-  Image, ActivityIndicator, StatusBar, Linking,Alert,
+  Image, ActivityIndicator, StatusBar, Linking, Alert,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import {launchImageLibrary} from 'react-native-image-picker';
@@ -50,6 +51,9 @@ export default function ChatScreen({route, navigation}: any) {
   const [otherUserName,   setOtherUserName]   = useState(initialHeaderName);
   const [otherUserPhoto,  setOtherUserPhoto]  = useState<string | null>(null);
 
+  // ── Reply state ──────────────────────────────────────────────
+  const [replyTo, setReplyTo] = useState<any>(null);
+
   let typingTimeout: any;
 
   useEffect(() => {
@@ -61,7 +65,11 @@ export default function ChatScreen({route, navigation}: any) {
       .onSnapshot(
         snapshot => {
           const data = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
-          setMessages(data);
+          setMessages(prev => {
+            // Keep locally deleted messages as deleted until Firestore confirms
+            const deletedIds = new Set(prev.filter(m => m.deleted).map(m => m.id));
+            return data.map(m => deletedIds.has(m.id) ? {...m, deleted: true} : m);
+          });
           setLoading(false);
           setTimeout(() => flatListRef.current?.scrollToEnd({animated: true}), 100);
         },
@@ -77,14 +85,17 @@ export default function ChatScreen({route, navigation}: any) {
     const unsubscribe = firestore()
       .collection('chats')
       .doc(chat.id)
-      .onSnapshot(doc => {
-        if (doc.exists) {
-          const data = doc.data();
-          setOtherUserTyping(
-            !!(data?.typingUser && data.typingUser !== currentUser?.uid),
-          );
-        }
-      });
+      .onSnapshot(
+        doc => {
+          if (doc && doc.exists) {
+            const data = doc.data();
+            setOtherUserTyping(
+              !!(data?.typingUser && data.typingUser !== currentUser?.uid),
+            );
+          }
+        },
+        err => console.log('TYPING LISTENER ERROR:', err),
+      );
     return unsubscribe;
   }, [chat.id]);
 
@@ -153,64 +164,127 @@ export default function ChatScreen({route, navigation}: any) {
     const text = newMessage.trim();
     setNewMessage('');
     setShowEmojiPicker(false);
+
+    // Capture reply snapshot before clearing
+    const replySnapshot = replyTo ? {
+      id:         replyTo.id,
+      text:       replyTo.text || '📷 Photo',
+      senderName: replyTo.senderName || 'User',
+    } : null;
+    setReplyTo(null);
+
     try {
       await firestore().collection('chats').doc(chat.id).collection('messages').add({
         type: 'text',
         text,
-        senderId: currentUser?.uid,
+        senderId:    currentUser?.uid,
         senderEmail: currentUser?.email,
-        senderName: currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User',
+        senderName:  currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User',
         senderPhoto: currentUser?.photoURL || '',
-        createdAt: firestore.FieldValue.serverTimestamp(),
-        readBy: [],
+        createdAt:   firestore.FieldValue.serverTimestamp(),
+        readBy:      [],
+        // Attach reply if present
+        ...(replySnapshot ? {replyTo: replySnapshot} : {}),
       });
       await firestore().collection('chats').doc(chat.id).update({
-        lastMessage: text,
+        lastMessage:     text,
         lastMessageTime: firestore.FieldValue.serverTimestamp(),
-        typingUser: null,
+        typingUser:      null,
         [`unreadCount.${otherUserId}`]: firestore.FieldValue.increment(1),
       });
 
-      // Only notify if no unread message notification exists already
-if (otherUserId) {
+      if (otherUserId) {
         try {
           const senderDoc = await firestore()
-            .collection('users')
-            .doc(currentUser.uid)
-            .get();
+            .collection('users').doc(currentUser.uid).get();
           const senderData = senderDoc.data();
           const realName =
-            senderData?.fullName ||
-            senderData?.displayName ||
-            senderData?.name ||
-            currentUser?.displayName ||
-            currentUser?.email?.split('@')[0] ||
-            'Someone';
+            senderData?.fullName || senderData?.displayName || senderData?.name ||
+            currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Someone';
 
-          console.log('SENDER DOC DATA:', JSON.stringify(senderDoc.data()));
-          console.log('REAL NAME:', realName);
-
-        await firestore().collection('notifications').add({
-  userId: otherUserId,
-  type: 'message',
-  title: '💬 New Message',
-  message: `${realName} sent you a message`,
-  senderId: currentUser?.uid,
-  chatId: chat.id,
-  read: false,
-  createdAt: firestore.FieldValue.serverTimestamp(),
-});
+          await firestore().collection('notifications').add({
+            userId:    otherUserId,
+            type:      'message',
+            title:     '💬 New Message',
+            message:   `${realName} sent you a message`,
+            senderId:  currentUser?.uid,
+            chatId:    chat.id,
+            read:      false,
+            createdAt: firestore.FieldValue.serverTimestamp(),
+          });
         } catch (e: any) {
-          console.log('❌ NOTIFICATION ERROR:', JSON.stringify(e));
-          Alert.alert('NOTIF ERROR', e?.message || JSON.stringify(e));
+          console.log('❌ NOTIFICATION ERROR:', e?.message || e);
         }
       }
-
     } catch (e: any) {
       console.log('❌ SEND MESSAGE ERROR:', e.message || e);
     }
   };
 
+  // ── Long press actions ───────────────────────────────────────
+  const handleLongPress = (message: any) => {
+    const isMyMessage = message.senderId === currentUser?.uid;
+    const options: any[] = [
+      {
+        text: '📋 Copy',
+        onPress: () => {
+          Clipboard.setString(message.text || '');
+          Alert.alert('Copied!', 'Message copied to clipboard.');
+        },
+      },
+      {
+        text: '↩️ Reply',
+        onPress: () => {
+          setReplyTo(message);
+          inputRef.current?.focus();
+        },
+      },
+    ];
+
+    if (isMyMessage) {
+      options.push({
+        text: '🗑 Unsend',
+        style: 'destructive',
+        onPress: () => unsendMessage(message.id),
+      });
+    }
+
+    options.push({text: 'Cancel', style: 'cancel'});
+
+    Alert.alert('Message Options', '', options);
+  };
+
+const unsendMessage = async (messageId: string) => {
+    Alert.alert('Unsend Message', 'Remove this message for everyone?', [
+      {
+        text: 'Unsend', style: 'destructive',
+        onPress: async () => {
+          try {
+            // Mark as deleted locally first — show placeholder instead of blinking
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === messageId
+                  ? {...m, deleted: true, text: 'This message was unsent'}
+                  : m,
+              ),
+            );
+            await firestore()
+              .collection('chats').doc(chat.id)
+              .collection('messages').doc(messageId)
+              .delete();
+          } catch (e: any) {
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === messageId ? {...m, deleted: false} : m,
+              ),
+            );
+            Alert.alert('Unsend Error', e?.message || JSON.stringify(e));
+          }
+        },
+      },
+      {text: 'Cancel', style: 'cancel'},
+    ]);
+  };
   const pickImage = async () => {
     const result = await launchImageLibrary({mediaType: 'photo', quality: 0.7});
     if (result.assets && result.assets[0]?.uri) uploadImage(result.assets[0].uri);
@@ -224,17 +298,17 @@ if (otherUserId) {
       const response = await fetch('https://api.cloudinary.com/v1_1/dipwobgzb/image/upload', {method: 'POST', body: data});
       const fileData = await response.json();
       await firestore().collection('chats').doc(chat.id).collection('messages').add({
-        type: 'image',
-        imageUrl: fileData.secure_url,
-        senderId: currentUser?.uid,
+        type:        'image',
+        imageUrl:    fileData.secure_url,
+        senderId:    currentUser?.uid,
         senderEmail: currentUser?.email,
-        senderName: currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User',
+        senderName:  currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User',
         senderPhoto: currentUser?.photoURL || '',
-        createdAt: firestore.FieldValue.serverTimestamp(),
-        readBy: [],
+        createdAt:   firestore.FieldValue.serverTimestamp(),
+        readBy:      [],
       });
       await firestore().collection('chats').doc(chat.id).update({
-        lastMessage: '📷 Photo',
+        lastMessage:     '📷 Photo',
         lastMessageTime: firestore.FieldValue.serverTimestamp(),
       });
     } catch (e) {console.log(e);}
@@ -256,7 +330,6 @@ if (otherUserId) {
     return date.toLocaleDateString([], {day: 'numeric', month: 'long', year: 'numeric'});
   };
 
-  /* ── Render clickable links in text ── */
   const renderMessageText = (text: string, isMyMessage: boolean) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = text.split(urlRegex);
@@ -328,15 +401,36 @@ if (otherUserId) {
             </View>
           )}
 
-          <View style={[
-            styles.bubble,
-            isMyMessage ? styles.myBubble : styles.otherBubble,
-            isMyMessage && isFirstInGroup && styles.myBubbleFirst,
-            !isMyMessage && isFirstInGroup && styles.otherBubbleFirst,
-            isMyMessage && isLastInGroup && styles.myBubbleLast,
-            !isMyMessage && isLastInGroup && styles.otherBubbleLast,
-          ]}>
-            {message.type === 'image' ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onLongPress={() => handleLongPress(message)}
+            style={[
+              styles.bubble,
+              isMyMessage ? styles.myBubble : styles.otherBubble,
+              isMyMessage && isFirstInGroup && styles.myBubbleFirst,
+              !isMyMessage && isFirstInGroup && styles.otherBubbleFirst,
+              isMyMessage && isLastInGroup && styles.myBubbleLast,
+              !isMyMessage && isLastInGroup && styles.otherBubbleLast,
+            ]}>
+
+            {/* REPLY PREVIEW */}
+            {message.replyTo && (
+              <View style={[
+                styles.replyPreview,
+                isMyMessage ? styles.replyPreviewMy : styles.replyPreviewOther,
+              ]}>
+                <Text style={styles.replyPreviewName}>{message.replyTo.senderName}</Text>
+                <Text style={styles.replyPreviewText} numberOfLines={1}>
+                  {message.replyTo.text}
+                </Text>
+              </View>
+            )}
+
+            {message.deleted ? (
+              <Text style={{color: 'rgba(255,255,255,0.4)', fontSize: 13, fontStyle: 'italic'}}>
+                🚫 This message was unsent
+              </Text>
+            ) : message.type === 'image' ? (
               <Image source={{uri: message.imageUrl}} style={styles.chatImage} />
             ) : (
               renderMessageText(message.text || '', isMyMessage)
@@ -355,7 +449,7 @@ if (otherUserId) {
                 </Text>
               )}
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -446,6 +540,21 @@ if (otherUserId) {
                 <Text style={styles.emojiItem}>{emoji}</Text>
               </TouchableOpacity>
             ))}
+          </View>
+        )}
+
+        {/* REPLY BANNER */}
+        {replyTo && (
+          <View style={styles.replyBanner}>
+            <View style={styles.replyBannerContent}>
+              <Text style={styles.replyBannerName}>↩️ {replyTo.senderName}</Text>
+              <Text style={styles.replyBannerText} numberOfLines={1}>
+                {replyTo.text || '📷 Photo'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setReplyTo(null)} style={styles.replyBannerClose}>
+              <Text style={styles.replyBannerCloseText}>✕</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -561,6 +670,37 @@ const styles = StyleSheet.create({
   },
   emojiItemWrapper: {width: '12.5%', alignItems: 'center', paddingVertical: 6},
   emojiItem: {fontSize: 26},
+
+  // ── Reply banner (above input) ───────────────────────────────
+  replyBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#1C1C1C',
+    borderTopWidth: 1, borderTopColor: '#2A2A2A',
+    borderLeftWidth: 3, borderLeftColor: '#C9956C',
+    paddingHorizontal: 12, paddingVertical: 8,
+  },
+  replyBannerContent: {flex: 1},
+  replyBannerName: {color: '#C9956C', fontSize: 12, fontWeight: 'bold', marginBottom: 2},
+  replyBannerText: {color: '#A09080', fontSize: 13},
+  replyBannerClose: {padding: 6},
+  replyBannerCloseText: {color: '#A09080', fontSize: 16, fontWeight: 'bold'},
+
+  // ── Reply preview inside bubble ──────────────────────────────
+  replyPreview: {
+    borderRadius: 8, padding: 8, marginBottom: 6,
+    borderLeftWidth: 3,
+  },
+  replyPreviewMy: {
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    borderLeftColor: 'rgba(255,255,255,0.5)',
+  },
+  replyPreviewOther: {
+    backgroundColor: 'rgba(201,149,108,0.15)',
+    borderLeftColor: '#C9956C',
+  },
+  replyPreviewName: {color: '#C9956C', fontSize: 11, fontWeight: 'bold', marginBottom: 2},
+  replyPreviewText: {color: 'rgba(255,255,255,0.7)', fontSize: 12},
+
   inputContainer: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 8, paddingVertical: 8,

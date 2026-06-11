@@ -197,8 +197,32 @@ function ProfileCard({item, navigation}: any) {
   const currentUser = auth().currentUser;
   const [connected, setConnected] = useState(false);
 
-  const handleConnect = () => {
-    setConnected(true);
+  const handleConnect = async () => {
+    if (!currentUser) return;
+    try {
+      const currentUserName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+      await firestore().collection('connectionRequests').add({
+        fromUserId:   currentUser.uid,
+        fromUserName: currentUserName,
+        toUserId:     item.id,
+        toUserName:   item.displayName || item.name || 'User',
+        status:       'pending',
+        createdAt:    firestore.FieldValue.serverTimestamp(),
+      });
+      await firestore().collection('notifications').add({
+        userId:     item.id,
+        type:       'connect_request',
+        title:      '🤝 Connection Request',
+        message:    `${currentUserName} wants to connect with you`,
+        senderId:   currentUser.uid,
+        senderName: currentUserName,
+        read:       false,
+        createdAt:  firestore.FieldValue.serverTimestamp(),
+      });
+      setConnected(true);
+    } catch (e) {
+      console.log('CONNECT ERROR:', e);
+    }
   };
 
   return (
@@ -239,7 +263,7 @@ function ProfileCard({item, navigation}: any) {
       </View>
       <TouchableOpacity
         style={styles.viewProfileBtn}
-        onPress={() => navigation.navigate('UserProfile', {userId: item.id})}>
+        onPress={() => navigation.navigate('PublicProfile', {userId: item.id})}>
         <Text style={styles.viewProfileText}>View Profile →</Text>
       </TouchableOpacity>
     </View>
@@ -262,6 +286,7 @@ function PostBubble({item, isAdmin, onDelete, navigation}: any) {
       .doc(item.id)
       .collection('comments')
       .orderBy('createdAt', 'asc')
+      .limit(10)
       .onSnapshot(
         snap => setPostComments(snap.docs.map(d => ({id: d.id, ...d.data()}))),
         err => console.log('FEED COMMENTS ERROR:', err),
@@ -429,6 +454,7 @@ export default function HomeScreen({navigation}: any) {
   const [selectedTab, setSelectedTab] = useState('Auditions');
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchText, setSearchText] = useState('');
+  const [suggestions, setSuggestions] = useState<any[]>([]);
   const [auditionPosts, setAuditionPosts] = useState<any[]>([]);
   const [generalPosts, setGeneralPosts] = useState<any[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
@@ -443,10 +469,7 @@ export default function HomeScreen({navigation}: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [reportTarget, setReportTarget] = useState<any>(null);
-
-  // ── FIX: unread notification count for bell dot ──
   const [unreadCount, setUnreadCount] = useState(0);
-
   const [profilePhoto, setProfilePhoto] = useState<string | null>(
     auth().currentUser?.photoURL || null,
   );
@@ -454,7 +477,6 @@ export default function HomeScreen({navigation}: any) {
   const currentUser = auth().currentUser;
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
 
-  // ── FIX: listen for unread notifications ──
   useEffect(() => {
     if (!currentUser) return;
     const unsub = firestore()
@@ -503,37 +525,62 @@ export default function HomeScreen({navigation}: any) {
   }, []);
 
   useEffect(() => {
-    loadFilms();
-    loadContests();
+    setFilmsLoading(true);
+    const unsub = firestore()
+      .collection('films')
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(
+        snap => {
+          setFilms(snap.docs.map(doc => ({id: doc.id, ...doc.data()})));
+          setFilmsLoading(false);
+        },
+        err => { console.log('FILMS ERROR:', err); setFilmsLoading(false); },
+      );
+    return () => unsub();
   }, []);
 
   useEffect(() => {
-    films.forEach(film => loadComments(film.id));
-  }, [films]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await Promise.all([loadFilms(), loadContests()]);
-    setRefreshing(false);
+    setContestsLoading(true);
+    const unsub = firestore()
+      .collection('contests')
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(
+        snap => {
+          setContests(snap.docs.map(doc => ({id: doc.id, ...doc.data()})));
+          setContestsLoading(false);
+        },
+        err => { console.log('CONTESTS ERROR:', err); setContestsLoading(false); },
+      );
+    return () => unsub();
   }, []);
 
-  const loadFilms = async () => {
-    try {
-      setFilmsLoading(true);
-      const snap = await firestore().collection('films').orderBy('createdAt', 'desc').get();
-      setFilms(snap.docs.map(doc => ({id: doc.id, ...doc.data()})));
-    } catch (e) {console.log('LOAD FILMS ERROR:', e);}
-    finally {setFilmsLoading(false);}
+  const handleSearchChange = (text: string) => {
+    setSearchText(text);
+    if (text.trim().length > 1) {
+      const q = text.toLowerCase();
+      // Search across auditions, films and contests
+      const auditionMatches = auditionPosts
+        .filter(p => p.text?.toLowerCase().includes(q))
+        .slice(0, 3)
+        .map(p => ({id: p.id, label: p.text?.substring(0, 60), type: '🎭'}));
+      const filmMatches = films
+        .filter(f => f.title?.toLowerCase().includes(q) || f.genre?.toLowerCase().includes(q))
+        .slice(0, 2)
+        .map(f => ({id: f.id, label: f.title, type: '🎬'}));
+      const contestMatches = contests
+        .filter(c => c.title?.toLowerCase().includes(q))
+        .slice(0, 2)
+        .map(c => ({id: c.id, label: c.title, type: '🏆'}));
+      setSuggestions([...auditionMatches, ...filmMatches, ...contestMatches].slice(0, 5));
+    } else {
+      setSuggestions([]);
+    }
   };
 
-  const loadContests = async () => {
-    try {
-      setContestsLoading(true);
-      const snap = await firestore().collection('contests').orderBy('createdAt', 'desc').get();
-      setContests(snap.docs.map(doc => ({id: doc.id, ...doc.data()})));
-    } catch (e) {console.log('LOAD CONTESTS ERROR:', e);}
-    finally {setContestsLoading(false);}
-  };
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 1000);
+  }, []);
 
   const loadComments = async (filmId: string) => {
     try {
@@ -573,6 +620,22 @@ export default function HomeScreen({navigation}: any) {
         createdAt: firestore.FieldValue.serverTimestamp(),
         postedBy: currentUser?.email, postedById: currentUser?.uid,
       });
+
+      // Also save to auditions collection so Browse Auditions can find it
+      if (tab === 'auditions') {
+        await firestore().collection('auditions').add({
+          title: postText.trim(),
+          description: postText.trim(),
+          imageUrl,
+          isActive: true,
+          status: 'Open',
+          createdAt: firestore.FieldValue.serverTimestamp(),
+          directorId: currentUser?.uid,
+          directorEmail: currentUser?.email,
+          directorName: currentUser?.displayName || currentUser?.email?.split('@')[0],
+        });
+      }
+
       setPostText('');
       setPostImage(null);
       Alert.alert('✅ Posted!', 'Your post is now live.');
@@ -604,7 +667,6 @@ export default function HomeScreen({navigation}: any) {
           ? firestore.FieldValue.arrayRemove(currentUser.uid)
           : firestore.FieldValue.arrayUnion(currentUser.uid),
       });
-      loadFilms();
     } catch (e) {console.log('LIKE ERROR:', e);}
   };
 
@@ -614,7 +676,6 @@ export default function HomeScreen({navigation}: any) {
       {text: 'Delete', style: 'destructive', onPress: async () => {
         try {
           await firestore().collection('films').doc(filmId).delete();
-          loadFilms();
         } catch (e) {console.log(e);}
       }},
     ]);
@@ -671,7 +732,16 @@ export default function HomeScreen({navigation}: any) {
   };
 
   const renderFeed = (tab: 'auditions' | 'general') => {
-    const posts = tab === 'auditions' ? auditionPosts : generalPosts;
+    const allPosts = tab === 'auditions' ? auditionPosts : generalPosts;
+    const posts = searchText.trim()
+      ? allPosts.filter(p =>
+          p.text?.toLowerCase().includes(searchText.toLowerCase()) ||
+          p.title?.toLowerCase().includes(searchText.toLowerCase()),
+        )
+      : activeFilter !== 'All'
+      ? allPosts.filter(p => p.text?.toLowerCase().includes(activeFilter.toLowerCase()))
+      : allPosts;
+
     return (
       <View>
         {tab === 'auditions' && (
@@ -688,8 +758,8 @@ export default function HomeScreen({navigation}: any) {
         ) : posts.length === 0 ? (
           <EmptyState
             icon={tab === 'auditions' ? '🎭' : '📢'}
-            title={tab === 'auditions' ? 'No auditions yet' : 'No posts yet'}
-            subtitle="Admin will post updates here"
+            title={tab === 'auditions' ? 'No auditions found' : 'No posts found'}
+            subtitle={searchText ? 'Try a different search term' : 'Admin will post updates here'}
           />
         ) : (
           posts.map(post => (
@@ -844,8 +914,6 @@ export default function HomeScreen({navigation}: any) {
               </Text>
             </View>
             <View style={styles.headerRight}>
-
-              {/* ── FIX: Bell with dot ── */}
               <TouchableOpacity
                 style={styles.notificationBtn}
                 onPress={() => navigation.navigate('Notifications')}>
@@ -874,13 +942,40 @@ export default function HomeScreen({navigation}: any) {
           <View style={styles.searchContainer}>
             <Text style={styles.searchIcon}>🔍</Text>
             <TextInput
-              placeholder="Search actors, directors, crew..."
+              placeholder="Search auditions, films, contests..."
               placeholderTextColor={C.textTertiary}
               value={searchText}
-              onChangeText={setSearchText}
+              onChangeText={handleSearchChange}
               style={styles.searchInput}
             />
+            {searchText.length > 0 && (
+              <TouchableOpacity onPress={() => { setSearchText(''); setSuggestions([]); }}>
+                <Text style={{color: C.textTertiary, fontSize: 18, fontWeight: 'bold', paddingHorizontal: 6}}>✕</Text>
+              </TouchableOpacity>
+            )}
           </View>
+
+          {/* ── LIVE SUGGESTIONS DROPDOWN ── */}
+          {suggestions.length > 0 && (
+            <View style={styles.suggestionsBox}>
+              {suggestions.map((s, i) => (
+                <TouchableOpacity
+                  key={s.id}
+                  style={[
+                    styles.suggestionItem,
+                    i < suggestions.length - 1 && styles.suggestionBorder,
+                  ]}
+                  onPress={() => {
+                    setSearchText(s.label || '');
+                    setSuggestions([]);
+                  }}>
+                  <Text style={styles.suggestionText} numberOfLines={1}>
+                    {s.type} {s.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {/* ── TABS ── */}
           <ScrollView
@@ -911,22 +1006,6 @@ export default function HomeScreen({navigation}: any) {
               <TouchableOpacity style={[styles.actionBtn, styles.quickPostBtn]} onPress={() => navigation.navigate('QuickPost')}>
                 <Text style={styles.actionBtnIcon}>⚡</Text>
                 <Text style={styles.actionBtnText}>Quick Post</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* ── CTA ROW ── */}
-          {isAdmin && (selectedTab === 'Auditions' || selectedTab === 'Short Films') && (
-            <View style={styles.ctaBannerRow}>
-              <TouchableOpacity
-                style={styles.ctaBannerPrimary}
-                onPress={() => navigation.navigate('PostAudition')}>
-                <Text style={styles.ctaBannerPrimaryText}>Post Audition</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.ctaBannerSecondary}
-                onPress={() => navigation.navigate('Profile')}>
-                <Text style={styles.ctaBannerSecondaryText}>View Profile</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -964,9 +1043,33 @@ const styles = StyleSheet.create({
   profileButton:   {width: 52, height: 52, borderRadius: 26, backgroundColor: C.card, justifyContent: 'center', alignItems: 'center', borderWidth: 2.5, borderColor: C.roseGold, overflow: 'hidden'},
   profileImage:    {width: 52, height: 52, borderRadius: 26},
   profileLetter:   {color: C.roseGold, fontSize: 20, fontWeight: 'bold'},
-  searchContainer: {flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, marginHorizontal: 18, marginBottom: 16, borderRadius: 14, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 0, height: 48},
+  searchContainer: {flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, marginHorizontal: 18, marginBottom: 4, borderRadius: 14, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 0, height: 48},
   searchIcon:  {fontSize: 15, marginRight: 8, color: C.textTertiary},
   searchInput: {flex: 1, color: C.textPrimary, fontSize: 14, height: 48},
+
+  // ── Suggestions ──
+  suggestionsBox: {
+    backgroundColor: C.card,
+    marginHorizontal: 18,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  suggestionItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  suggestionBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  suggestionText: {
+    color: C.textPrimary,
+    fontSize: 13,
+  },
+
   tabsScroll:   {marginBottom: 14},
   tabsContent:  {paddingHorizontal: 18, gap: 8},
   tabBtn:       {paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border},

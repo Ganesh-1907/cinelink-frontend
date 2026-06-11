@@ -17,6 +17,8 @@ import firestore from '@react-native-firebase/firestore';
 import {useFocusEffect} from '@react-navigation/native';
 import ProfileCompletionCard from './ProfileCompletionCard';
 
+const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+
 const CLOUD_NAME = 'dipwobgzb';
 const UPLOAD_PRESET = 'cinelink_upload';
 
@@ -43,13 +45,10 @@ export default function ProfileScreen({navigation}: any) {
   const [uploading, setUploading] = useState<boolean>(false);
   const [saved, setSaved] = useState<boolean>(false);
   const [verificationStatus, setVerificationStatus] = useState<string>('');
+  const [location, setLocation] = useState<string>('');
 
   const scrollRef = useRef<ScrollView>(null);
   const user = auth().currentUser;
-
-  useEffect(() => {
-    loadProfile();
-  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -75,6 +74,7 @@ export default function ProfileScreen({navigation}: any) {
         setPortfolio3(data?.portfolio3 || '');
         setPortfolioPhotos(data?.portfolioPhotos || []);
         setVerificationStatus(data?.verificationStatus || '');
+        setLocation(data?.location || '');
       }
     } catch (e) {
       console.error('Error loading profile:', e);
@@ -191,15 +191,14 @@ export default function ProfileScreen({navigation}: any) {
         setUploading(false);
       }
 
-      const uploadedPhotos: string[] = [];
-      if (newPhotos.length > 0) {
-        setUploading(true);
-        for (const p of newPhotos) {
-          const url = await uploadToCloudinary(p.uri);
-          uploadedPhotos.push(url);
-        }
-        setUploading(false);
-      }
+    let uploadedPhotos: string[] = [];
+if (newPhotos.length > 0) {
+  setUploading(true);
+  uploadedPhotos = await Promise.all(
+    newPhotos.map(p => uploadToCloudinary(p.uri)),
+  );
+  setUploading(false);
+}
 
       const allPortfolioPhotos = [...portfolioPhotos, ...uploadedPhotos];
       const trimmedName = name.trim();
@@ -349,8 +348,8 @@ export default function ProfileScreen({navigation}: any) {
         <Text style={styles.sectionTitle}>Basic Info</Text>
 
         <Text style={styles.label}>I am a:</Text>
-        <View style={styles.roleRow}>
-          {['Actor', 'Director', 'Creator'].map(r => (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roleRow}>
+          {['Actor', 'Director', 'Writer', 'Editor', 'DOP', 'Producer', 'Creator'].map(r => (
             <TouchableOpacity
               key={r}
               style={[styles.roleBtn, role === r && styles.roleBtnActive]}
@@ -360,7 +359,16 @@ export default function ProfileScreen({navigation}: any) {
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
+        
+        <Text style={styles.label}>Location</Text>
+<TextInput
+  style={styles.input}
+  placeholder="e.g. Mumbai, Delhi, Hyderabad"
+  placeholderTextColor="#A09080"
+  value={location}
+  onChangeText={setLocation}
+/>
 
         <Text style={styles.label}>Full Name</Text>
         <TextInput

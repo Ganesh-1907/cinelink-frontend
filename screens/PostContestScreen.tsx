@@ -76,24 +76,27 @@ export default function PostContestScreen({navigation}: any) {
 });
 
       // Notify ALL other users
-      const usersSnapshot = await firestore().collection('users').get();
-      const batch = firestore().batch();
-      usersSnapshot.docs.forEach(doc => {
-        if (doc.id !== user?.uid) {
-          const notifRef = firestore().collection('notifications').doc();
-          batch.set(notifRef, {
-            userId: doc.id,
-            type: 'new_contest',
-            title: '🏆 New Contest Alert!',
-            message: `"${title.trim()}" is live — Prize: ${prize.trim()}. Enter now on CineLink!`,
-            senderId: user?.uid,
-            contestId: contestRef.id,
-            read: false,
-            createdAt: firestore.FieldValue.serverTimestamp(),
-          });
-        }
-      });
-      await batch.commit();
+// Notify ALL other users (chunked: Firestore batches max 500 ops)
+const usersSnapshot = await firestore().collection('users').get();
+const otherUsers = usersSnapshot.docs.filter(doc => doc.id !== user?.uid);
+
+for (let i = 0; i < otherUsers.length; i += 450) {
+  const batch = firestore().batch();
+  otherUsers.slice(i, i + 450).forEach(doc => {
+    const notifRef = firestore().collection('notifications').doc();
+    batch.set(notifRef, {
+      userId: doc.id,
+      type: 'new_contest',
+      title: '🏆 New Contest Alert!',
+      message: `"${title.trim()}" is live — Prize: ${prize.trim()}. Enter now on CineLink!`,
+      senderId: user?.uid,
+      contestId: contestRef.id,
+      read: false,
+      createdAt: firestore.FieldValue.serverTimestamp(),
+    });
+  });
+  await batch.commit();
+}
 
       Alert.alert('Success! 🏆', 'Your contest is now live!', [
         {text: 'OK', onPress: () => navigation.goBack()},

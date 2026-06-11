@@ -35,7 +35,6 @@ const PublicProfileScreen = ({route, navigation}: any) => {
 
   useEffect(() => {
     loadUser();
-    loadFollowers();
     checkFollowing();
     if (!isOwnProfile) checkConnectionStatus();
   }, []);
@@ -55,16 +54,15 @@ const PublicProfileScreen = ({route, navigation}: any) => {
     }
   };
 
-  const loadFollowers = async () => {
-    try {
-      const [followers, following] = await Promise.all([
-        firestore().collection('users').doc(userId).collection('followers').get(),
-        firestore().collection('users').doc(userId).collection('following').get(),
-      ]);
-      setFollowersCount(followers.size);
-      setFollowingCount(following.size);
-    } catch (e) {console.log(e);}
-  };
+  useEffect(() => {
+    const unsubF = firestore()
+      .collection('users').doc(userId).collection('followers')
+      .onSnapshot(snap => setFollowersCount(snap.size), e => console.log(e));
+    const unsubFi = firestore()
+      .collection('users').doc(userId).collection('following')
+      .onSnapshot(snap => setFollowingCount(snap.size), e => console.log(e));
+    return () => { unsubF(); unsubFi(); };
+  }, [userId]);
 
   const checkFollowing = async () => {
     if (!currentUser) return;
@@ -117,7 +115,6 @@ const PublicProfileScreen = ({route, navigation}: any) => {
         await firestore().collection('users').doc(currentUser.uid)
           .collection('following').doc(userId).delete();
         setIsFollowing(false);
-        setFollowersCount(prev => prev - 1);
       } else {
         await followRef.set({
           userId: currentUser.uid, userName: currentUserName,
@@ -144,7 +141,6 @@ if (existingNotif.empty) {
   });
 }
         setIsFollowing(true);
-        setFollowersCount(prev => prev + 1);
       }
     } catch (e) {console.log(e);}
     finally {setFollowLoading(false);}
@@ -154,6 +150,7 @@ if (existingNotif.empty) {
   const sendConnectRequest = async () => {
     if (!currentUser || connectLoading) return;
     setConnectLoading(true);
+    setConnectRequestSent(true); // optimistic — show instantly
     try {
       const currentUserName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
       const otherUserName = cleanName(userData?.displayName || userData?.fullName || userData?.name || userData?.email);
@@ -201,18 +198,21 @@ if (existingNotif.empty) {
       const currentUserName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
       const otherUserName = cleanName(userData?.displayName || userData?.fullName || userData?.name || userData?.email);
 
+      // Use set with merge — avoids a get() call which would fail
+      // if the doc doesn't exist yet (permission-denied on non-existent doc)
+      await chatRef.set({
+        id: chatId,
+        participants: [currentUser.uid, userId],
+        participantNames: [currentUserName, otherUserName],
+        participantEmails: [currentUser.email || '', userData?.email || ''],
+        lastMessage: '',
+        lastMessageTime: null,
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      // createdAt only on first write
       const chatDoc = await chatRef.get();
-      if (!chatDoc.exists) {
-        await chatRef.set({
-          id: chatId,
-          participants: [currentUser.uid, userId],
-          participantNames: [currentUserName, otherUserName],
-          participantEmails: [currentUser.email || '', userData?.email || ''],
-          lastMessage: '',
-          lastMessageTime: null,
-          createdAt: firestore.FieldValue.serverTimestamp(),
-          updatedAt: firestore.FieldValue.serverTimestamp(),
-        });
+      if (!chatDoc.data()?.createdAt) {
+        await chatRef.update({createdAt: firestore.FieldValue.serverTimestamp()});
       }
 
       navigation.navigate('ChatScreen', {

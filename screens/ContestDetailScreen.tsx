@@ -15,7 +15,13 @@ const cleanName = (raw: string | null | undefined): string => {
 };
 
 export default function ContestDetailScreen({route, navigation}: any) {
-  const {contest} = route.params;
+  const initialContest = route.params?.contest;
+  const contestId = route.params?.contestId || initialContest?.id;
+
+  // Only trust a passed object if it's complete; otherwise fetch from Firestore
+  const [contest, setContest] = useState<any>(
+    initialContest?.title ? initialContest : null,
+  );
   const [entries, setEntries] = useState<any[]>([]);
   const [videoLink, setVideoLink] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,21 +34,48 @@ export default function ContestDetailScreen({route, navigation}: any) {
   const currentUserName =
     user?.displayName || user?.email?.split('@')[0] || 'Creator';
 
+  // Always sync the full contest doc (notifications only pass an ID)
   useEffect(() => {
-    loadEntries();
+    if (!contestId) {
+      Alert.alert('Error', 'Contest not found.');
+      navigation.goBack();
+      return;
+    }
+    const unsub = firestore()
+      .collection('contests')
+      .doc(contestId)
+      .onSnapshot(
+        doc => {
+          if (doc.exists) {
+            setContest({id: doc.id, ...doc.data()});
+          } else {
+            Alert.alert('Contest Removed', 'This contest no longer exists.');
+            navigation.goBack();
+          }
+        },
+        err => console.log('CONTEST LOAD ERROR:', err),
+      );
+    return () => unsub();
+  }, [contestId]);
+
+  useEffect(() => {
+    const unsubEntries = loadEntries();
     checkIfEntered();
     loadVotedEntries();
 
-    const unsubscribe = navigation.addListener('focus', () => {
+    const unsubFocus = navigation.addListener('focus', () => {
       checkIfEntered();
     });
-    return unsubscribe;
+    return () => {
+      unsubEntries && unsubEntries();
+      unsubFocus();
+    };
   }, []);
 
-  const loadEntries = () => {
+  const loadEntries = () =>
     firestore()
       .collection('contestEntries')
-      .where('contestId', '==', contest.id)
+      .where('contestId', '==', contestId)
       .onSnapshot(
         snapshot => {
           if (!snapshot) return;
@@ -54,14 +87,14 @@ export default function ContestDetailScreen({route, navigation}: any) {
         },
         err => console.log('ENTRIES ERROR:', err),
       );
-  };
 
   const checkIfEntered = async () => {
+    if (!contestId || !user) return;
     try {
       const snapshot = await firestore()
         .collection('contestEntries')
-        .where('contestId', '==', contest.id)
-        .where('userId', '==', user?.uid)
+        .where('contestId', '==', contestId)
+        .where('userId', '==', user.uid)
         .get();
       if (!snapshot.empty) setEntered(true);
     } catch (e) {console.log(e);}
@@ -85,7 +118,7 @@ export default function ContestDetailScreen({route, navigation}: any) {
       navigation.navigate('Payment', {
         amount: contest.entryFee,
         purpose: 'contest_entry',
-        itemId: contest.id,
+        itemId: contestId,
         itemTitle: contest.title,
         videoLink: videoLink.trim(),
       });
@@ -94,7 +127,7 @@ export default function ContestDetailScreen({route, navigation}: any) {
 
     const existing = await firestore()
       .collection('contestEntries')
-      .where('contestId', '==', contest.id)
+      .where('contestId', '==', contestId)
       .where('userId', '==', user?.uid)
       .get();
 
@@ -107,7 +140,7 @@ export default function ContestDetailScreen({route, navigation}: any) {
     setLoading(true);
     try {
       await firestore().collection('contestEntries').add({
-        contestId: contest.id,
+        contestId: contestId,
         contestTitle: contest.title,
         userId: user?.uid,
         userEmail: user?.email,
@@ -120,7 +153,7 @@ export default function ContestDetailScreen({route, navigation}: any) {
         createdAt: firestore.FieldValue.serverTimestamp(),
       });
 
-      await firestore().collection('contests').doc(contest.id).update({
+      await firestore().collection('contests').doc(contestId).update({
         entriesCount: firestore.FieldValue.increment(1),
       });
 
@@ -131,7 +164,7 @@ export default function ContestDetailScreen({route, navigation}: any) {
           title:     '🎬 New Contest Entry!',
           message:   `${currentUserName} submitted an entry for "${contest.title}"`,
           senderId:  user?.uid,
-          contestId: contest.id,
+          contestId: contestId,
           read:      false,
           createdAt: firestore.FieldValue.serverTimestamp(),
         });
@@ -156,25 +189,61 @@ export default function ContestDetailScreen({route, navigation}: any) {
       Alert.alert('Already Voted', 'You have already voted for this entry!');
       return;
     }
+    if (!user?.uid) return;
+
     try {
-      await firestore().collection('contestEntries').doc(entryId).update({
-        votes: firestore.FieldValue.increment(1),
+      const entryRef = firestore().collection('contestEntries').doc(entryId);
+      const userRef  = firestore().collection('users').doc(user.uid);
+
+      await firestore().runTransaction(async tx => {
+        const entrySnap = await tx.get(entryRef);
+        const userSnap  = await tx.get(userRef);
+
+        if (!entrySnap.exists) throw new Error('Entry not found.');
+
+        // Double-vote guard inside transaction
+        const alreadyVoted: string[] = userSnap.data()?.votedEntries || [];
+        if (alreadyVoted.includes(entryId)) throw new Error('already_voted');
+
+        const currentVotes   = entrySnap.data()?.votes      || 0;
+        const currentJury    = entrySnap.data()?.juryScore   || 0;
+        const newVotes       = currentVotes + 1;
+        const newFinalScore  = currentJury * 0.6 + newVotes * 0.4;
+
+        tx.update(entryRef, {
+          votes:      newVotes,
+          finalScore: newFinalScore,
+        });
+        tx.update(userRef, {
+          votedEntries: firestore.FieldValue.arrayUnion(entryId),
+        });
       });
-      await firestore().collection('users').doc(user?.uid).update({
-        votedEntries: firestore.FieldValue.arrayUnion(entryId),
-      });
+
+      // Update local state only after transaction succeeds
       const updated = new Set(votedEntries);
       updated.add(entryId);
       setVotedEntries(updated);
       setEntries(prev =>
-        prev.map(e => e.id === entryId ? {...e, votes: (e.votes || 0) + 1} : e),
+        prev.map(e => {
+          if (e.id !== entryId) return e;
+          const newVotes      = (e.votes || 0) + 1;
+          const newFinalScore = (e.juryScore || 0) * 0.6 + newVotes * 0.4;
+          return {...e, votes: newVotes, finalScore: newFinalScore};
+        }),
       );
       Alert.alert('👍 Voted!', 'Your vote has been counted!');
-    } catch (e) {
-      Alert.alert('Error', 'Could not register vote. Try again.');
+    } catch (e: any) {
+      if (e?.message === 'already_voted') {
+        Alert.alert('Already Voted', 'You have already voted for this entry!');
+        // Sync local state to match server
+        const updated = new Set(votedEntries);
+        updated.add(entryId);
+        setVotedEntries(updated);
+      } else {
+        Alert.alert('Error', 'Could not register vote. Try again.');
+      }
     }
   };
-
   const updateJuryScore = async (entryId: string, scoreText: string, currentVotes: number) => {
     const score = Math.min(100, Math.max(0, Number(scoreText) || 0));
     const finalScore = score * 0.6 + (currentVotes || 0) * 0.4;
@@ -200,7 +269,7 @@ export default function ContestDetailScreen({route, navigation}: any) {
               // Delete all entries first
               const entriesSnapshot = await firestore()
                 .collection('contestEntries')
-                .where('contestId', '==', contest.id)
+                .where('contestId', '==', contestId)
                 .get();
 
               if (!entriesSnapshot.empty) {
@@ -212,7 +281,7 @@ export default function ContestDetailScreen({route, navigation}: any) {
               // Delete the contest document
               await firestore()
                 .collection('contests')
-                .doc(contest.id)
+                .doc(contestId)
                 .delete();
 
               Alert.alert('✅ Deleted', 'Contest and all entries removed successfully.');
@@ -226,16 +295,41 @@ export default function ContestDetailScreen({route, navigation}: any) {
     );
   };
 
-  const getDaysLeft = (deadline: string) => {
-    if (!deadline) return 'Open';
-    const diff = Math.ceil(
-      (new Date(deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24),
-    );
+  const parseDeadline = (deadline: any): Date | null => {
+    if (!deadline) return null;
+    // Firestore Timestamp
+    if (typeof deadline?.toDate === 'function') return deadline.toDate();
+    if (typeof deadline !== 'string') return null;
+    const s = deadline.trim();
+    // YYYY-MM-DD → end of that day
+    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) {
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(y, m - 1, d, 23, 59, 59);
+    }
+    // DD-MM-YYYY or DD/MM/YYYY
+    const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), 23, 59, 59);
+    // Anything else JS can parse (e.g. "30 July 2026")
+    const parsed = new Date(s);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const getDaysLeft = (deadline: any) => {
+    const end = parseDeadline(deadline);
+    if (!end) return 'Open';
+    const diff = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     if (diff < 0) return 'Contest Ended';
     if (diff === 0) return '🔥 Last Day!';
     return `${diff} days left`;
   };
-
+  if (!contest) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
+        <ActivityIndicator size="large" color="#C9956C" style={{marginTop: 60}} />
+      </SafeAreaView>
+    );
+  }
   const daysLeft = getDaysLeft(contest.deadline);
   const isEnded = daysLeft === 'Contest Ended';
 

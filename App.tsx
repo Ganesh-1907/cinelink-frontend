@@ -5,6 +5,8 @@ import ImageViewerScreen from './screens/ImageViewerScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Text, View, ActivityIndicator, StatusBar, Alert} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
+import {createNavigationContainerRef} from '@react-navigation/native';
+import {setNavigator, registerBackgroundHandler} from './src/services/NotificationService';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import auth from '@react-native-firebase/auth';
@@ -48,6 +50,9 @@ import JoinRequestsScreen from './screens/JoinRequestsScreen';
 import PrivacyPolicyScreen from './screens/PrivacyPolicyScreen';
 import TermsScreen from './screens/TermsScreen';
 import FollowersScreen from './screens/FollowersScreen';
+
+export const navigationRef = createNavigationContainerRef();
+registerBackgroundHandler(); // must run before AppRegistry
 
 const COLORS = {
   primary: '#C9956C',
@@ -307,17 +312,24 @@ function App(): JSX.Element {
 
   useEffect(() => {
     if (!user) return;
-    const setOnline = async (isOnline: boolean) => {
+
+    const setPresence = async (isOnline: boolean) => {
       try {
         await firestore().collection('users').doc(user.uid)
           .set({isOnline, lastSeen: firestore.FieldValue.serverTimestamp()}, {merge: true});
       } catch (e) {console.log(e);}
     };
-    setOnline(true);
-    const interval = setInterval(() => setOnline(true), 60000);
+
+    // Mark online once on login
+    setPresence(true);
+
+    // Refresh every 10 minutes instead of every 60 seconds
+    // 60s = 1,440 writes/day → 10min = 144 writes/day
+    const interval = setInterval(() => setPresence(true), 10 * 60 * 1000);
+
     return () => {
       clearInterval(interval);
-      setOnline(false);
+      setPresence(false);
     };
   }, [user]);
 
@@ -338,40 +350,31 @@ function App(): JSX.Element {
     return (
       <>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-        <OnboardingScreen onDone={async () => {
-          await AsyncStorage.setItem('onboarding_done', 'true');
-          setShowOnboarding(false);
-        }} />
+        <OnboardingScreen onDone={() => setShowOnboarding(false)} />
       </>
     );
   }
 
   if (user && showSuggestedFollows) {
     return (
-      <NavigationContainer>
+      <>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-        <Stack.Navigator screenOptions={{headerShown: false}}>
-          <Stack.Screen name="SuggestedFollows">
-            {props => (
-              <SuggestedFollowsScreen
-                {...props}
-                navigation={{
-                  ...props.navigation,
-                  replace: async () => {
-                    await AsyncStorage.setItem('suggested_follows_done', 'true');
-                    setShowSuggestedFollows(false);
-                  },
-                }}
-              />
-            )}
-          </Stack.Screen>
-        </Stack.Navigator>
-      </NavigationContainer>
+        <SuggestedFollowsScreen
+          navigation={{
+            replace: async () => {
+              await AsyncStorage.setItem('suggested_follows_done', 'true');
+              setShowSuggestedFollows(false);
+            },
+            goBack: () => setShowSuggestedFollows(false),
+          }}
+          route={{params: {}}}
+        />
+      </>
     );
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef} onReady={() => setNavigator(navigationRef)}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
       {user ? <MainStack /> : <AuthStack />}
     </NavigationContainer>

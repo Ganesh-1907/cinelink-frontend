@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, ActivityIndicator, RefreshControl,
   Animated, ScrollView, Alert,
-} from 'react-native';;
+} from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 
@@ -47,10 +47,23 @@ export default function BrowseAuditionsScreen({navigation}: any) {
   const [savedIds, setSavedIds] = useState<string[]>([]);
 
   useEffect(() => {
-    loadAuditions();
-    loadSavedIds();
-  }, []);
-
+  loadSavedIds();
+  setLoading(true);
+  const unsub = firestore()
+    .collection('auditions')
+    .orderBy('createdAt', 'desc')
+    .onSnapshot(
+      snap => {
+        setAuditions(snap.docs.map(doc => ({id: doc.id, ...doc.data()})));
+        setLoading(false);
+      },
+      err => {
+        console.log('LOAD AUDITIONS ERROR:', err);
+        setLoading(false);
+      },
+    );
+  return () => unsub();
+}, []);
   const loadAuditions = async () => {
     try {
       setLoading(true);
@@ -88,12 +101,11 @@ export default function BrowseAuditionsScreen({navigation}: any) {
     } catch (e) {console.log(e);}
   };
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadAuditions();
-    await loadSavedIds();
-    setRefreshing(false);
-  }, []);
+const onRefresh = useCallback(async () => {
+  setRefreshing(true);
+  await loadSavedIds();
+  setTimeout(() => setRefreshing(false), 800);
+}, []);
 
   const toggleSave = async (audition: any) => {
     if (!currentUser) return;
@@ -145,7 +157,13 @@ export default function BrowseAuditionsScreen({navigation}: any) {
           <View style={[styles.statusBadge, isExpired ? styles.statusClosed : styles.statusOpen]}>
             <Text style={styles.statusText}>{isExpired ? '🔴 Closed' : '🟢 Open'}</Text>
           </View>
-          <TouchableOpacity onPress={() => toggleSave(item)} style={styles.saveBtn}>
+          <TouchableOpacity
+  onPress={e => {
+    e.stopPropagation?.();
+    toggleSave(item);
+  }}
+  hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+  style={styles.saveBtn}>
             <Text style={styles.saveBtnText}>{isSaved ? '❤️ Saved' : '🤍 Save'}</Text>
           </TouchableOpacity>
         </View>
@@ -209,15 +227,15 @@ export default function BrowseAuditionsScreen({navigation}: any) {
         {text: 'Cancel', style: 'cancel'},
         {
           text: 'Delete', style: 'destructive',
-          onPress: async () => {
-            try {
-              await firestore().collection('auditions').doc(item.id).delete();
-              Alert.alert('✅ Deleted!', 'Audition removed successfully.');
-              loadAuditions();
-            } catch (e) {
-              Alert.alert('Error', 'Could not delete.');
-            }
-          },
+onPress: async () => {
+  try {
+    await firestore().collection('auditions').doc(item.id).delete();
+    Alert.alert('✅ Deleted!', 'Audition removed successfully.');
+    // ✅ removed loadAuditions() — listener handles it
+  } catch (e) {
+    Alert.alert('Error', 'Could not delete.');
+  }
+},
         },
       ]);
     }}>

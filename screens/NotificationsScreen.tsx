@@ -74,7 +74,7 @@ const isCastingApprovedNotif = (type: string) =>
 
 const isMessageNotif = (type: string) => type === 'message';
 const isContestNotif = (type: string) =>
-  ['contest_entry', 'contest_created', 'new_contest'].includes(type);
+  ['contest_entry', 'contest_created', 'new_contest', 'contest_deadline', 'contest_winner'].includes(type);
 
 export default function NotificationsScreen({navigation}: any) {
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -83,39 +83,37 @@ export default function NotificationsScreen({navigation}: any) {
   const user = auth().currentUser;
 
   useEffect(() => {
+    if (!user?.uid) return;
     const unsub = firestore()
       .collection('notifications')
       .where('userId', '==', user?.uid)
-      .onSnapshot(snapshot => {
-        const data = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
-        data.sort((a: any, b: any) => {
-          if (!a.createdAt || !b.createdAt) return 0;
-          return b.createdAt.seconds - a.createdAt.seconds;
-        });
-        setNotifications(data);
-        setLoading(false);
-        loadSenderNames(data);
-      });
+      .orderBy('createdAt', 'desc')
+      .limit(50)
+      .onSnapshot(
+        {includeMetadataChanges: false},
+        snapshot => {
+          const data = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+          setNotifications(data);
+          setLoading(false);
+          loadSenderNames(data);
+        },
+        err => {
+          console.log('NOTIFICATIONS ERROR:', err);
+          setLoading(false);
+        },
+      );
     return () => unsub();
   }, []);
 
-  const loadSenderNames = async (notifList: any[]) => {
-    const names: any = {};
-    for (const notif of notifList) {
-      const senderId = notif.senderId || notif.viewerId || notif.fromUserId;
-      if (senderId && !names[senderId]) {
-        try {
-          const doc = await firestore().collection('users').doc(senderId).get();
-          if (doc.exists) {
-            const data = doc.data();
-            const name = data?.displayName || data?.fullName || data?.name || data?.email?.split('@')[0] || null;
-            if (name) names[senderId] = name;
-          }
-        } catch (e) {}
-      }
-    }
-    setSenderNames(names);
-  };
+  const loadSenderNames = (notifList: any[]) => {
+  const names: any = {};
+  for (const notif of notifList) {
+    const senderId = notif.senderId || notif.viewerId || notif.fromUserId;
+    const name = notif.senderName || notif.fromName || notif.userName;
+    if (senderId && name) names[senderId] = name;
+  }
+  setSenderNames(names);
+};
 
   const resolveMessage = (item: any): string => {
     const raw = item.message || '';
@@ -132,15 +130,13 @@ export default function NotificationsScreen({navigation}: any) {
   };
 
   const deleteNotification = async (id: string) => {
+    // Update UI instantly before Firestore confirms
+    setNotifications(prev => prev.filter(n => n.id !== id));
     await firestore().collection('notifications').doc(id).delete().catch(() => {});
   };
 
   // ── TAP NOTIFICATION → Navigate to relevant screen ─────────
   const handleNotifTap = async (item: any) => {
-    console.log('NOTIFICATION CLICKED');
-console.log('TYPE:', item.type);
-console.log('CONTEST ID:', item.contestId);
-console.log('FULL ITEM:', JSON.stringify(item));
   await markAsRead(item.id);
   const senderId = item.senderId || item.viewerId || item.fromUserId;
 
@@ -149,25 +145,23 @@ console.log('FULL ITEM:', JSON.stringify(item));
   } else if (isCastingApprovedNotif(item.type)) {
     navigation.navigate('DirectorDashboard');
   } else if (isMessageNotif(item.type) && item.chatId) {
-    try {
-      const chatDoc = await firestore()
-        .collection('chats')
-        .doc(item.chatId)
-        .get();
-      if (chatDoc.exists) {
-        navigation.navigate('ChatScreen', {
-          chat: {id: item.chatId, ...chatDoc.data()},
-        });
-      }
-    } catch (e) {
-      console.log('CHAT NAV ERROR:', e);
+    navigation.navigate('ChatScreen', {
+      chat: {
+        id: item.chatId,
+        participants: [user?.uid, item.senderId].filter(Boolean),
+        participantNames: [],
+        lastMessage: '',
+      },
+    });
+  } else if (isContestNotif(item.type)) {
+    if (item.contestId) {
+      navigation.navigate('ContestDetail', {contestId: item.contestId});
+    } else {
+      // Legacy notifications without contestId — open the Contests tab
+      navigation.navigate('Main', {screen: 'Contests'});
     }
-  } else if (isContestNotif(item.type) && item.contestId) {
-  console.log('Contest Notification:', item);
-  navigation.navigate('ContestDetail', {
-    contest: {id: item.contestId},
-  });
   } else if (item.type === 'request_accepted' || item.type === 'request_rejected') {
+
     navigation.navigate('MyApplications');
   } else if (item.type === 'comment' && item.auditionId) {
     navigation.navigate('AuditionDetail', {auditionId: item.auditionId});
@@ -250,6 +244,8 @@ console.log('FULL ITEM:', JSON.stringify(item));
       {
         text: 'Clear All', style: 'destructive',
         onPress: async () => {
+          // Clear UI instantly
+          setNotifications([]);
           const batch = firestore().batch();
           notifications.forEach(n =>
             batch.delete(firestore().collection('notifications').doc(n.id)),
@@ -362,6 +358,8 @@ console.log('FULL ITEM:', JSON.stringify(item));
       ? 'Tap to open chat →'
       : isCastingApprovedNotif(item.type)
       ? 'Tap to go to dashboard →'
+      : isContestNotif(item.type)
+      ? 'Tap to view contest →'
       : 'Tap to view profile →'}
   </Text>
 )}
@@ -370,7 +368,10 @@ console.log('FULL ITEM:', JSON.stringify(item));
                   {/* DELETE */}
                   <TouchableOpacity
                     style={styles.deleteBtn}
-                    onPress={() => deleteNotification(item.id)}>
+                    onPress={e => {
+                      e.stopPropagation?.();
+                      deleteNotification(item.id);
+                    }}>
                     <Text style={styles.deleteBtnText}>✕</Text>
                   </TouchableOpacity>
                 </View>

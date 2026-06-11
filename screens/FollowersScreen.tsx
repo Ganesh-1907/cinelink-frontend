@@ -36,7 +36,7 @@ export default function FollowersScreen({route, navigation}: any) {
       const followingSnap = await firestore()
         .collection('users').doc(userId)
         .collection('following').get();
-      const followingIds = followingSnap.docs.map(d => d.data().userId || d.id);
+      const followingIds = followingSnap.docs.map(d => d.data().userId || d.data().id || d.id);
 
       // Fetch user data for each
       const fetchUsers = async (ids: string[]) => {
