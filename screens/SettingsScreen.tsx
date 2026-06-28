@@ -7,6 +7,8 @@ import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 
 export default function SettingsScreen({navigation}: any) {
+  const user = auth().currentUser;
+
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [profileVisible, setProfileVisible] = useState(true);
@@ -35,7 +37,6 @@ export default function SettingsScreen({navigation}: any) {
     } catch(e) {}
   };
   const [deleting, setDeleting] = useState(false);
-  const user = auth().currentUser;
 
   const deleteAccount = () => {
     Alert.alert(
@@ -94,9 +95,20 @@ export default function SettingsScreen({navigation}: any) {
               await auth().currentUser?.delete();
 
               Alert.alert('✅ Done', 'Your account has been deleted.');
-            } catch (e) {
+            } catch (e: any) {
               console.log('DELETE ERROR:', e);
-              Alert.alert('Error', 'Please logout and login again before deleting account.');
+              if (e?.code === 'auth/requires-recent-login') {
+                Alert.alert(
+                  'Sign In Required',
+                  'For security, please sign out and sign back in before deleting your account.',
+                  [
+                    {text: 'Sign Out Now', style: 'destructive', onPress: () => auth().signOut()},
+                    {text: 'Cancel', style: 'cancel'},
+                  ],
+                );
+              } else {
+                Alert.alert('Error', 'Could not delete account. Please try again.');
+              }
             } finally {
               setDeleting(false);
             }
@@ -172,7 +184,7 @@ export default function SettingsScreen({navigation}: any) {
           </View>
           <Switch
             value={emailNotifications}
-            onValueChange={setEmailNotifications}
+            onValueChange={toggleEmailNotifications}
             trackColor={{false: '#2A2A2A', true: '#C9956C'}}
             thumbColor="#fff"
           />
@@ -244,6 +256,7 @@ export default function SettingsScreen({navigation}: any) {
 
         <Text style={styles.deleteNote}>
           As per India's DPDP Act 2023, you have the right to delete all your personal data from CineLink.
+          {'\n'}⚠️ You may need to sign out and sign back in before deleting.
         </Text>
 
         {/* ✅ COPYRIGHT */}

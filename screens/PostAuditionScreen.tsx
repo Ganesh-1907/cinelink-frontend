@@ -2,45 +2,48 @@
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, SafeAreaView, StatusBar, ActivityIndicator,
-  Image, Alert,
+  Image, Alert, Modal,
 } from 'react-native';
 import {launchImageLibrary} from 'react-native-image-picker';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 
-const CLOUD_NAME   = 'dipwobgzb';
+const CLOUD_NAME    = 'dipwobgzb';
 const UPLOAD_PRESET = 'cinelink_upload';
-const ADMIN_EMAIL  = 'anilkumardevarakonda03@gmail.com';
+const ADMIN_EMAIL   = 'anilkumardevarakonda03@gmail.com';
 
-const ROLES = ['Hero', 'Heroine', 'Villain', 'Supporting', 'Child Artist', 'Comedian', 'Any Role'];
+const ROLES       = ['Hero', 'Heroine', 'Villain', 'Supporting', 'Child Artist', 'Comedian', 'Any Role'];
+const CATEGORIES  = ['Movies', 'Short Films', 'Theatre', 'YouTube / Web', 'TV / OTT'];
 
 export default function PostAuditionScreen({navigation}: any) {
-  const [title, setTitle]               = useState('');
-  const [description, setDescription]   = useState('');
-  const [location, setLocation]         = useState('');
-  const [role, setRole]                 = useState('');
-  const [ageMin, setAgeMin]             = useState('');
-  const [ageMax, setAgeMax]             = useState('');
-  const [gender, setGender]             = useState('Any');
-  const [lastDate, setLastDate]         = useState('');
-  const [language, setLanguage]         = useState('');
-  const [contactLink, setContactLink]   = useState('');
-  const [poster, setPoster]             = useState<any>(null);
-  const [posterUrl, setPosterUrl]       = useState('');
-  const [loading, setLoading]           = useState(false);
-  const [uploading, setUploading]       = useState(false);
-  const [accessChecked, setAccessChecked] = useState(false);
-  const [hasAccess, setHasAccess]               = useState(false);
-  const [agreedToGuidelines, setAgreedToGuidelines] = useState(false);
+  const [title,               setTitle]               = useState('');
+  const [description,         setDescription]         = useState('');
+  const [location,            setLocation]            = useState('');
+  const [role,                setRole]                = useState('');
+  const [ageMin,              setAgeMin]              = useState('');
+  const [ageMax,              setAgeMax]              = useState('');
+  const [gender,              setGender]              = useState('Any');
+  const [lastDate,            setLastDate]            = useState('');
+  const [language,            setLanguage]            = useState('');
+  const [contactLink,         setContactLink]         = useState('');
+  const [poster,              setPoster]              = useState<any>(null);
+  const [posterUrl,           setPosterUrl]           = useState('');
+  const [loading,             setLoading]             = useState(false);
+  const [uploading,           setUploading]           = useState(false);
+  const [accessChecked,       setAccessChecked]       = useState(false);
+  const [hasAccess,           setHasAccess]           = useState(false);
+  const [agreedToGuidelines,  setAgreedToGuidelines]  = useState(false);
+  const [showFullscreen,      setShowFullscreen]      = useState(false);
+  const [category,            setCategory]            = useState('Movies');
+  const [budget,              setBudget]              = useState('');
+  const [positions,           setPositions]           = useState('');
 
-  const user = auth().currentUser;
-  const isAdmin = user?.email === ADMIN_EMAIL;
+  const user         = auth().currentUser;
+  const isAdmin      = user?.email === ADMIN_EMAIL;
   const directorName = user?.displayName || user?.email?.split('@')[0] || 'Director';
+  const pendingUploadRef = React.useRef<Promise<string> | null>(null);
 
-  // ── Check access: admin OR approved casting director ──
-  useEffect(() => {
-    checkAccess();
-  }, []);
+  useEffect(() => { checkAccess(); }, []);
 
   const checkAccess = async () => {
     try {
@@ -49,14 +52,9 @@ export default function PostAuditionScreen({navigation}: any) {
         setAccessChecked(true);
         return;
       }
-      // Check if user is an approved casting director
-      const userDoc = await firestore().collection('users').doc(user?.uid).get();
+      const userDoc  = await firestore().collection('users').doc(user?.uid).get();
       const userData = userDoc.data();
-      if (userData?.isApprovedDirector === true) {
-        setHasAccess(true);
-      } else {
-        setHasAccess(false);
-      }
+      setHasAccess(userData?.isApprovedDirector === true);
     } catch (e) {
       console.log(e);
       setHasAccess(false);
@@ -65,15 +63,28 @@ export default function PostAuditionScreen({navigation}: any) {
     }
   };
 
-  const pickPoster = async () => {
-    const result = await launchImageLibrary({mediaType: 'photo', quality: 0.8});
-    if (result.assets?.[0]) {
-      setPoster(result.assets[0]);
-      uploadPoster(result.assets[0].uri!);
+  // ── Poster: tap shows options if poster exists, else open gallery ──
+  const pickPoster = () => {
+    if (poster) {
+      Alert.alert('🖼️ Poster Options', 'What would you like to do?', [
+        {text: '🔄 Replace Photo',  onPress: () => openGallery()},
+        {text: '🗑️ Remove Photo', style: 'destructive', onPress: () => { setPoster(null); setPosterUrl(''); }},
+        {text: 'Cancel', style: 'cancel'},
+      ]);
+    } else {
+      openGallery();
     }
   };
 
-  const uploadPoster = async (uri: string) => {
+  const openGallery = async () => {
+    const result = await launchImageLibrary({mediaType: 'photo', quality: 0.8});
+    if (result.assets?.[0]) {
+      setPoster(result.assets[0]);
+      pendingUploadRef.current = uploadPoster(result.assets[0].uri!);
+    }
+  };
+
+  const uploadPoster = async (uri: string): Promise<string> => {
     setUploading(true);
     try {
       const formData = new FormData();
@@ -85,12 +96,19 @@ export default function PostAuditionScreen({navigation}: any) {
       );
       const data = await response.json();
       setPosterUrl(data.secure_url);
+      return data.secure_url;
     } catch (e) {
       Alert.alert('Upload failed', 'Could not upload poster.');
-    } finally { setUploading(false); }
+      setPoster(null);
+      setPosterUrl('');
+      return '';
+    } finally {
+      setUploading(false);
+      pendingUploadRef.current = null;
+    }
   };
 
- const postAudition = async () => {
+  const postAudition = async () => {
     if (!agreedToGuidelines) {
       Alert.alert('Required', 'Please confirm you agree to the posting guidelines.');
       return;
@@ -99,51 +117,65 @@ export default function PostAuditionScreen({navigation}: any) {
       Alert.alert('Missing Info', 'Please fill Title, Description and Location.');
       return;
     }
-    if (uploading) {
-      Alert.alert('Please Wait', 'Poster is still uploading...');
-      return;
+    let resolvedPosterUrl = posterUrl;
+    if (pendingUploadRef.current) {
+      resolvedPosterUrl = await pendingUploadRef.current;
+      if (!resolvedPosterUrl) return;
     }
     setLoading(true);
     try {
-      await firestore().collection('auditions').add({
-        title:       title.trim(),
-        description: description.trim(),
-        location:    location.trim(),
-        role:        role.trim(),
-        ageRange:    ageMin && ageMax ? `${ageMin}-${ageMax}` : '',
-        gender,
-        lastDate:    lastDate.trim(),
-        language:    language.trim(),
-        contactLink: contactLink.trim(),
-        posterUrl,
-        directorId:    user?.uid,
-        directorEmail: user?.email,
-        directorName,
-        isAdminPost:   isAdmin,
-        status:        'Open',
-        isActive:      true,
-        applicants:    [],
-        createdAt:     firestore.FieldValue.serverTimestamp(),
-      });
+      const auditionRef = await firestore().collection('auditions').add({
+  title:       title.trim(),
+  description: description.trim(),
+  location:    location.trim(),
+  role:        role.trim(),
+  ageRange:    ageMin && ageMax ? `${ageMin}-${ageMax}` : '',
+  gender,
+  lastDate:    lastDate.trim(),
+  language:    language.trim(),
+  contactLink: contactLink.trim(),
+  posterUrl:   resolvedPosterUrl,
+  directorId:    user?.uid,
+  directorEmail: user?.email,
+  directorName,
+  isAdminPost:   isAdmin,
+  status:        'Open',
+  isActive:      true,
+  applicants:    [],
+  likes:         0,
+  likedBy:       [],
+  views:         0,
+  category:      category,
+  budget:        budget.trim(),
+  positions:     positions.trim(),
+  createdAt:     firestore.FieldValue.serverTimestamp(),
+});
 
-      await firestore().collection('notifications').add({
-        userId:    user?.uid,
-        type:      'new_audition',
-        title:     '🎬 Audition Posted!',
-        message:   `Your audition "${title}" is now live!`,
-        read:      false,
-        createdAt: firestore.FieldValue.serverTimestamp(),
-      });
+await firestore().collection('feedPosts').add({
+  tab:          'auditions',
+  text:         title.trim(),
+  description:  description.trim(),
+  posterUrl:    resolvedPosterUrl || '',
+  location:     location.trim(),
+  role:         role.trim(),
+  auditionId:   auditionRef.id,
+  directorId:    user?.uid,
+  directorEmail: user?.email,
+  directorName,
+  createdAt:    firestore.FieldValue.serverTimestamp(),
+});
 
       Alert.alert('Success! 🎬', 'Your audition is now live!', [
         {text: 'OK', onPress: () => navigation.goBack()},
       ]);
     } catch (e: any) {
       Alert.alert('Error', e.message);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // ── Loading ──
+  // ── Loading state ──
   if (!accessChecked) {
     return (
       <View style={styles.centerBox}>
@@ -153,7 +185,7 @@ export default function PostAuditionScreen({navigation}: any) {
     );
   }
 
-  // ── No Access — show apply screen ──
+  // ── No Access ──
   if (!hasAccess) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -163,7 +195,6 @@ export default function PostAuditionScreen({navigation}: any) {
           <Text style={styles.noAccessText}>
             Only verified casting directors can post auditions on CineLink. This ensures actors are protected from fake auditions.
           </Text>
-
           <View style={styles.securityList}>
             <Text style={styles.securityTitle}>🔒 Our 5-Layer Verification:</Text>
             <Text style={styles.securityItem}>✅ Profile review</Text>
@@ -172,16 +203,10 @@ export default function PostAuditionScreen({navigation}: any) {
             <Text style={styles.securityItem}>✅ Phone verification</Text>
             <Text style={styles.securityItem}>✅ Admin approval call</Text>
           </View>
-
-          <TouchableOpacity
-            style={styles.applyBtn}
-            onPress={() => navigation.navigate('CastingRequest')}>
+          <TouchableOpacity style={styles.applyBtn} onPress={() => navigation.navigate('CastingRequest')}>
             <Text style={styles.applyBtnText}>📋 Apply for Casting Director Access</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
             <Text style={styles.backBtnText}>← Go Back</Text>
           </TouchableOpacity>
         </View>
@@ -189,11 +214,33 @@ export default function PostAuditionScreen({navigation}: any) {
     );
   }
 
-  // ── Has Access — show post form ──
+  // ── Has Access — Post Form ──
   return (
     <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
+
+      {/* ── FULLSCREEN POSTER MODAL ── */}
+      <Modal
+        visible={showFullscreen && poster !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFullscreen(false)}>
+        <TouchableOpacity
+          style={styles.fullscreenBg}
+          onPress={() => setShowFullscreen(false)}
+          activeOpacity={1}>
+          {poster?.uri ? (
+            <Image
+              source={{uri: poster.uri}}
+              style={styles.fullscreenImage}
+              resizeMode="contain"
+            />
+          ) : null}
+          <Text style={styles.fullscreenHint}>Tap anywhere to close</Text>
+        </TouchableOpacity>
+      </Modal>
+
       <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-        <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
         {/* ACCESS BADGE */}
         <View style={styles.accessBadge}>
@@ -203,17 +250,31 @@ export default function PostAuditionScreen({navigation}: any) {
         </View>
 
         <View style={styles.section}>
-          {/* POSTER */}
-          <TouchableOpacity style={styles.posterPicker} onPress={pickPoster}>
-            {poster ? (
+
+          {/* ── POSTER PICKER ── */}
+          <TouchableOpacity
+            style={styles.posterPicker}
+            onPress={() => { if (poster) setShowFullscreen(true); else openGallery(); }}
+            activeOpacity={0.9}>
+
+            {poster?.uri ? (
               <>
                 <Image source={{uri: poster.uri}} style={styles.posterImage} />
+
+                {/* Edit button */}
+                <TouchableOpacity style={styles.editPosterBtn} onPress={pickPoster}>
+                  <Text style={styles.editPosterText}>✏️ Edit</Text>
+                </TouchableOpacity>
+
+                {/* Uploading overlay */}
                 {uploading && (
                   <View style={styles.uploadingOverlay}>
                     <ActivityIndicator color="#fff" />
                     <Text style={styles.uploadingText}>Uploading...</Text>
                   </View>
                 )}
+
+                {/* Uploaded badge */}
                 {posterUrl && !uploading && (
                   <View style={styles.uploadedBadge}>
                     <Text style={styles.uploadedText}>✅ Uploaded</Text>
@@ -224,11 +285,12 @@ export default function PostAuditionScreen({navigation}: any) {
               <View style={styles.posterPlaceholder}>
                 <Text style={styles.posterIcon}>🎭</Text>
                 <Text style={styles.posterText}>Tap to add poster</Text>
-                <Text style={styles.posterSub}>Optional — recommended 16:9</Text>
+                <Text style={styles.posterSub}>Optional — portrait format recommended</Text>
               </View>
             )}
           </TouchableOpacity>
 
+          {/* ── FORM FIELDS ── */}
           <Text style={styles.label}>Audition Title *</Text>
           <TextInput style={styles.input} placeholder="e.g. Hero Role — Telugu Action Film" placeholderTextColor="#A09080" value={title} onChangeText={setTitle} />
 
@@ -243,6 +305,15 @@ export default function PostAuditionScreen({navigation}: any) {
             {ROLES.map(r => (
               <TouchableOpacity key={r} style={[styles.chip, role === r && styles.chipActive]} onPress={() => setRole(r)}>
                 <Text style={[styles.chipText, role === r && styles.chipTextActive]}>{r}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <Text style={styles.label}>Category / Medium</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 8}}>
+            {CATEGORIES.map(c => (
+              <TouchableOpacity key={c} style={[styles.chip, category === c && styles.chipActive]} onPress={() => setCategory(c)}>
+                <Text style={[styles.chipText, category === c && styles.chipTextActive]}>{c}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -266,6 +337,12 @@ export default function PostAuditionScreen({navigation}: any) {
           <Text style={styles.label}>Language</Text>
           <TextInput style={styles.input} placeholder="e.g. Telugu, Hindi, Tamil" placeholderTextColor="#A09080" value={language} onChangeText={setLanguage} />
 
+          <Text style={styles.label}>Budget / Pay</Text>
+          <TextInput style={styles.input} placeholder="e.g. ₹5,000/day or Negotiable" placeholderTextColor="#A09080" value={budget} onChangeText={setBudget} />
+
+          <Text style={styles.label}>Positions Available</Text>
+          <TextInput style={styles.input} placeholder="e.g. 2 Males, 1 Female" placeholderTextColor="#A09080" value={positions} onChangeText={setPositions} />
+
           <Text style={styles.label}>Last Date to Apply</Text>
           <TextInput style={styles.input} placeholder="e.g. June 30, 2026" placeholderTextColor="#A09080" value={lastDate} onChangeText={setLastDate} />
 
@@ -287,10 +364,8 @@ export default function PostAuditionScreen({navigation}: any) {
             </Text>
           </View>
 
-          {/* AGREEMENT CHECKBOX */}
-          <TouchableOpacity
-            style={styles.checkboxRow}
-            onPress={() => setAgreedToGuidelines(!agreedToGuidelines)}>
+          {/* AGREEMENT */}
+          <TouchableOpacity style={styles.checkboxRow} onPress={() => setAgreedToGuidelines(!agreedToGuidelines)}>
             <View style={[styles.checkbox, agreedToGuidelines && styles.checkboxChecked]}>
               {agreedToGuidelines && <Text style={styles.checkmark}>✓</Text>}
             </View>
@@ -303,7 +378,9 @@ export default function PostAuditionScreen({navigation}: any) {
             style={[styles.postBtn, (loading || uploading || !agreedToGuidelines) && styles.postBtnDisabled]}
             onPress={postAudition}
             disabled={loading || uploading || !agreedToGuidelines}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.postBtnText}>🎭 Post Audition</Text>}
+            {loading
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.postBtnText}>🎭 Post Audition</Text>}
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -312,39 +389,47 @@ export default function PostAuditionScreen({navigation}: any) {
 }
 
 const styles = StyleSheet.create({
-  safe:      {flex: 1, backgroundColor: '#0A0A0A'},
-  container: {flex: 1, backgroundColor: '#0A0A0A'},
-  centerBox: {flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center', gap: 12},
+  safe:         {flex: 1, backgroundColor: '#0A0A0A'},
+  container:    {flex: 1, backgroundColor: '#0A0A0A'},
+  centerBox:    {flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center', gap: 12},
   checkingText: {color: '#A09080', fontSize: 14},
 
   // No access
   noAccessContainer: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30},
-  noAccessIcon:  {fontSize: 64, marginBottom: 16},
-  noAccessTitle: {color: '#FFFFFF', fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 12},
-  noAccessText:  {color: '#A09080', fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: 24},
-  securityList:  {backgroundColor: '#1C1C1C', borderRadius: 14, padding: 16, width: '100%', marginBottom: 24, borderWidth: 1, borderColor: '#C9956C'},
-  securityTitle: {color: '#C9956C', fontWeight: 'bold', fontSize: 14, marginBottom: 10},
-  securityItem:  {color: '#A09080', fontSize: 13, lineHeight: 28},
-  applyBtn:      {backgroundColor: '#C9956C', borderRadius: 14, padding: 16, width: '100%', alignItems: 'center', marginBottom: 12},
-  applyBtnText:  {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
-  backBtn:       {backgroundColor: '#1C1C1C', borderRadius: 14, padding: 14, width: '100%', alignItems: 'center', borderWidth: 1, borderColor: '#2A2A2A'},
-  backBtnText:   {color: '#A09080', fontWeight: '600', fontSize: 14},
+  noAccessIcon:      {fontSize: 64, marginBottom: 16},
+  noAccessTitle:     {color: '#FFFFFF', fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 12},
+  noAccessText:      {color: '#A09080', fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: 24},
+  securityList:      {backgroundColor: '#1C1C1C', borderRadius: 14, padding: 16, width: '100%', marginBottom: 24, borderWidth: 1, borderColor: '#C9956C'},
+  securityTitle:     {color: '#C9956C', fontWeight: 'bold', fontSize: 14, marginBottom: 10},
+  securityItem:      {color: '#A09080', fontSize: 13, lineHeight: 28},
+  applyBtn:          {backgroundColor: '#C9956C', borderRadius: 14, padding: 16, width: '100%', alignItems: 'center', marginBottom: 12},
+  applyBtnText:      {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
+  backBtn:           {backgroundColor: '#1C1C1C', borderRadius: 14, padding: 14, width: '100%', alignItems: 'center', borderWidth: 1, borderColor: '#2A2A2A'},
+  backBtnText:       {color: '#A09080', fontWeight: '600', fontSize: 14},
+
+  // Fullscreen modal
+  fullscreenBg:    {flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center'},
+  fullscreenImage: {width: '100%', height: '90%'},
+  fullscreenHint:  {color: '#A09080', fontSize: 13, marginTop: 12},
 
   accessBadge:     {backgroundColor: '#0A2E1F', marginHorizontal: 20, marginTop: 10, borderRadius: 10, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#4ADE80'},
   accessBadgeText: {color: '#4ADE80', fontWeight: 'bold', fontSize: 13},
 
   section: {padding: 20, paddingBottom: 48},
 
-  posterPicker: {width: '100%', height: 200, borderRadius: 16, overflow: 'hidden', marginBottom: 8, borderWidth: 1.5, borderColor: '#2A2A2A', borderStyle: 'dashed'},
-  posterImage:  {width: '100%', height: '100%', resizeMode: 'cover'},
-  posterPlaceholder: {flex: 1, backgroundColor: '#1C1C1C', justifyContent: 'center', alignItems: 'center', gap: 6},
-  posterIcon:   {fontSize: 40},
-  posterText:   {color: '#A09080', fontSize: 14, fontWeight: '600'},
-  posterSub:    {color: '#A09080', fontSize: 12},
-  uploadingOverlay: {...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', gap: 8},
-  uploadingText: {color: '#fff', fontSize: 13},
-  uploadedBadge: {position: 'absolute', bottom: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4},
-  uploadedText:  {color: '#4ADE80', fontSize: 12, fontWeight: 'bold'},
+  // Poster
+  posterPicker:      {width: '100%', borderRadius: 16, overflow: 'hidden', marginBottom: 8, borderWidth: 1.5, borderColor: '#2A2A2A', borderStyle: 'dashed'},
+  posterImage:       {width: '100%', aspectRatio: 3 / 4, resizeMode: 'cover', backgroundColor: '#1C1C1C'},
+  posterPlaceholder: {height: 180, backgroundColor: '#1C1C1C', justifyContent: 'center', alignItems: 'center', gap: 6},
+  posterIcon:        {fontSize: 40},
+  posterText:        {color: '#A09080', fontSize: 14, fontWeight: '600'},
+  posterSub:         {color: '#A09080', fontSize: 12},
+  uploadingOverlay:  {...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', gap: 8},
+  uploadingText:     {color: '#fff', fontSize: 13},
+  uploadedBadge:     {position: 'absolute', bottom: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4},
+  uploadedText:      {color: '#4ADE80', fontSize: 12, fontWeight: 'bold'},
+  editPosterBtn:     {position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, zIndex: 10},
+  editPosterText:    {color: '#FFFFFF', fontSize: 12, fontWeight: 'bold'},
 
   label:    {color: '#C9956C', fontSize: 13, fontWeight: '700', marginBottom: 8, marginTop: 18, textTransform: 'uppercase', letterSpacing: 0.5},
   input:    {backgroundColor: '#1C1C1C', borderRadius: 12, padding: 14, color: '#FFFFFF', fontSize: 15, borderWidth: 1, borderColor: '#2A2A2A'},
@@ -362,24 +447,21 @@ const styles = StyleSheet.create({
   genderBtnText:       {color: '#A09080', fontSize: 13, fontWeight: '500'},
   genderBtnTextActive: {color: '#FFFFFF', fontWeight: 'bold'},
 
-  ageRow:  {flexDirection: 'row', alignItems: 'center', gap: 8},
-  ageTo:   {color: '#A09080', fontSize: 14},
+  ageRow: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  ageTo:  {color: '#A09080', fontSize: 14},
 
   postBtn:         {backgroundColor: '#C9956C', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 32},
   postBtnDisabled: {opacity: 0.5},
   postBtnText:     {color: '#FFFFFF', fontSize: 16, fontWeight: 'bold'},
 
-  guidelineBox: {
-    backgroundColor: '#1A0A0A', borderRadius: 14, padding: 16,
-    marginTop: 24, marginBottom: 8, borderWidth: 1, borderColor: '#DC2626',
-  },
+  guidelineBox:     {backgroundColor: '#1A0A0A', borderRadius: 14, padding: 16, marginTop: 24, marginBottom: 8, borderWidth: 1, borderColor: '#DC2626'},
   guidelineTitle:   {color: '#FCA5A5', fontSize: 14, fontWeight: 'bold', marginBottom: 10},
   guidelineItem:    {color: '#A09080', fontSize: 13, lineHeight: 26},
   guidelineWarning: {color: '#EF4444', fontSize: 12, fontWeight: 'bold', marginTop: 10, textAlign: 'center'},
 
-  checkboxRow:    {flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 16, marginBottom: 8},
-  checkbox:       {width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#C9956C', justifyContent: 'center', alignItems: 'center', marginTop: 2},
-  checkboxChecked:{backgroundColor: '#C9956C'},
-  checkmark:      {color: '#FFFFFF', fontSize: 14, fontWeight: 'bold'},
-  checkboxLabel:  {color: '#A09080', fontSize: 12, flex: 1, lineHeight: 18},
+  checkboxRow:     {flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 16, marginBottom: 8},
+  checkbox:        {width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#C9956C', justifyContent: 'center', alignItems: 'center', marginTop: 2},
+  checkboxChecked: {backgroundColor: '#C9956C'},
+  checkmark:       {color: '#FFFFFF', fontSize: 14, fontWeight: 'bold'},
+  checkboxLabel:   {color: '#A09080', fontSize: 12, flex: 1, lineHeight: 18},
 });

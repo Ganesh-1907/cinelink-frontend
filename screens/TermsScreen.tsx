@@ -113,11 +113,12 @@ export default function TermsScreen({navigation}: any) {
           </Text>
 
           {/* SECTION 10 */}
-            <Text style={styles.sectionText}>
-  These Terms are governed by the laws of India. Any disputes arising from the
-  use of CineLink shall be subject to the exclusive jurisdiction of the courts
-  in Hyderabad, Telangana, India.
-</Text>
+          <Text style={styles.sectionTitle}>10. Governing Law</Text>
+          <Text style={styles.sectionText}>
+            These Terms are governed by the laws of India. Any disputes arising from the
+            use of CineLink shall be subject to the exclusive jurisdiction of the courts
+            in Hyderabad, Telangana, India.
+          </Text>
 
           {/* SECTION 11 */}
           <Text style={styles.sectionTitle}>11. Changes to Terms</Text>

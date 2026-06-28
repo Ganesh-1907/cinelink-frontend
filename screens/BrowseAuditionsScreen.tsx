@@ -1,11 +1,12 @@
 ﻿import React, {useEffect, useState, useCallback} from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, ActivityIndicator, RefreshControl,
+  TextInput, RefreshControl,
   Animated, ScrollView, Alert,
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
+import EngagementBar from '../components/EngagementBar';
 
 function SkeletonBlock({width, height, style}: any) {
   const shimmer = useState(new Animated.Value(0.3))[0];
@@ -36,9 +37,29 @@ function SkeletonCard() {
 }
 
 const ROLES = ['All', 'Hero', 'Heroine', 'Villain', 'Supporting', 'Child Artist', 'Comedian', 'Any Role'];
+const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+
+const CATEGORY_COLORS: Record<string, {bg: string; text: string; border: string}> = {
+  'Movies':        {bg: 'rgba(201,149,108,0.15)', text: '#C9956C', border: 'rgba(201,149,108,0.5)'},
+  'Short Films':   {bg: 'rgba(74,222,128,0.10)',  text: '#4ADE80', border: 'rgba(74,222,128,0.4)'},
+  'Theatre':       {bg: 'rgba(129,140,248,0.10)', text: '#818CF8', border: 'rgba(129,140,248,0.4)'},
+  'YouTube / Web': {bg: 'rgba(248,113,113,0.10)', text: '#F87171', border: 'rgba(248,113,113,0.4)'},
+  'TV / OTT':      {bg: 'rgba(251,191,36,0.10)',  text: '#FBBF24', border: 'rgba(251,191,36,0.4)'},
+};
+
+const getDaysLeft = (dateStr: string) => {
+  if (!dateStr) return null;
+  const deadline = new Date(dateStr);
+  if (isNaN(deadline.getTime())) return null;
+  const diff = Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (diff < 0) return {label: 'Deadline passed', color: '#FCA5A5'};
+  if (diff === 0) return {label: 'Last day!', color: '#FBBF24'};
+  return {label: `${diff} days left`, color: '#4ADE80'};
+};
 
 export default function BrowseAuditionsScreen({navigation}: any) {
   const currentUser = auth().currentUser;
+  const isAdmin = currentUser?.email === ADMIN_EMAIL;
   const [auditions, setAuditions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,32 +85,6 @@ export default function BrowseAuditionsScreen({navigation}: any) {
     );
   return () => unsub();
 }, []);
-  const loadAuditions = async () => {
-    try {
-      setLoading(true);
-      const snap = await firestore()
-        .collection('auditions')
-        .where('isActive', '==', true)
-        .orderBy('createdAt', 'desc')
-        .get();
-      const data = snap.docs.map(doc => ({id: doc.id, ...doc.data()}));
-      setAuditions(data);
-    } catch (e: any) {
-      try {
-        const snap = await firestore()
-          .collection('auditions')
-          .orderBy('createdAt', 'desc')
-          .get();
-        const data = snap.docs.map(doc => ({id: doc.id, ...doc.data()}));
-        setAuditions(data);
-      } catch (err) {
-        console.log('LOAD AUDITIONS ERROR:', err);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadSavedIds = async () => {
     if (!currentUser) return;
     try {
@@ -104,7 +99,7 @@ export default function BrowseAuditionsScreen({navigation}: any) {
 const onRefresh = useCallback(async () => {
   setRefreshing(true);
   await loadSavedIds();
-  setTimeout(() => setRefreshing(false), 800);
+  setRefreshing(false);
 }, []);
 
   const toggleSave = async (audition: any) => {
@@ -146,6 +141,10 @@ const onRefresh = useCallback(async () => {
   const renderCard = ({item}: any) => {
     const isSaved = savedIds.includes(item.id);
     const isExpired = item.status === 'Closed' || item.isActive === false;
+    const daysLeft = getDaysLeft(item.lastDate);
+    const catColor = (item.category && CATEGORY_COLORS[item.category])
+      ? CATEGORY_COLORS[item.category]
+      : CATEGORY_COLORS['Movies'];
 
     return (
       <TouchableOpacity
@@ -153,23 +152,45 @@ const onRefresh = useCallback(async () => {
         activeOpacity={0.85}
         onPress={() => navigation.navigate('AuditionDetail', {audition: item})}>
 
+        {/* Top row: status + save */}
         <View style={styles.cardTopRow}>
           <View style={[styles.statusBadge, isExpired ? styles.statusClosed : styles.statusOpen]}>
             <Text style={styles.statusText}>{isExpired ? '🔴 Closed' : '🟢 Open'}</Text>
           </View>
           <TouchableOpacity
-  onPress={e => {
-    e.stopPropagation?.();
-    toggleSave(item);
-  }}
-  hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
-  style={styles.saveBtn}>
+            onPress={e => { e.stopPropagation?.(); toggleSave(item); }}
+            hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}
+            style={styles.saveBtn}>
             <Text style={styles.saveBtnText}>{isSaved ? '❤️ Saved' : '🤍 Save'}</Text>
           </TouchableOpacity>
         </View>
 
+        {/* Category pill */}
+        {item.category ? (
+          <View style={[styles.categoryPill, {backgroundColor: catColor.bg, borderColor: catColor.border}]}>
+            <Text style={[styles.categoryPillText, {color: catColor.text}]}>{item.category}</Text>
+          </View>
+        ) : null}
+
         <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
 
+        {/* Budget + Positions */}
+        {(item.budget || item.positions) ? (
+          <View style={styles.budgetRow}>
+            {item.budget ? (
+              <View style={styles.budgetPill}>
+                <Text style={styles.budgetPillText}>💰 {item.budget}</Text>
+              </View>
+            ) : null}
+            {item.positions ? (
+              <View style={styles.positionsPill}>
+                <Text style={styles.positionsPillText}>👥 {item.positions}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* Meta chips */}
         <View style={styles.metaGrid}>
           {item.role ? (
             <View style={styles.metaChip}>
@@ -195,53 +216,88 @@ const onRefresh = useCallback(async () => {
           ) : null}
         </View>
 
-        <View style={styles.infoRow}>
-          {item.location ? <Text style={styles.infoText}>📍 {item.location}</Text> : null}
-          {item.lastDate ? <Text style={styles.deadlineText}>⏰ {item.lastDate}</Text> : null}
+        {/* Location */}
+        {item.location ? (
+          <Text style={styles.infoText}>📍 {item.location}</Text>
+        ) : null}
+
+        {/* Director + applicants */}
+        <View style={styles.directorRow}>
+          <Text style={styles.directorText}>
+            🎥 {item.directorName || item.directorEmail?.split('@')[0] || 'Director'}
+          </Text>
+          <Text style={styles.applicantsText}>
+            {item.applicants?.length || item.applicationCount || 0} applied
+          </Text>
         </View>
 
-        <Text style={styles.directorText}>
-          🎥 {item.directorName || item.directorEmail?.split('@')[0] || 'Director'}
-        </Text>
-
+        {/* Description */}
         {item.description ? (
           <Text style={styles.descText} numberOfLines={2}>{item.description}</Text>
         ) : null}
 
-        {/* APPLY BUTTON */}
-<TouchableOpacity
-  style={[styles.applyBtn, isExpired && styles.applyBtnDisabled]}
-  onPress={() => navigation.navigate('AuditionDetail', {audition: item})}
-  disabled={isExpired}>
-  <Text style={styles.applyBtnText}>
-    {isExpired ? 'Closed' : 'View & Apply →'}
-  </Text>
-</TouchableOpacity>
+        {/* Deadline countdown */}
+        {item.lastDate ? (
+          <View style={styles.deadlineRow}>
+            <Text style={styles.deadlineLabel}>Apply before {item.lastDate}</Text>
+            {daysLeft ? (
+              <Text style={[styles.daysLeftText, {color: daysLeft.color}]}>{daysLeft.label}</Text>
+            ) : null}
+          </View>
+        ) : null}
 
-{/* ✅ DELETE BUTTON — only for audition owner */}
-{item.directorId === currentUser?.uid && (
-  <TouchableOpacity
-    style={styles.deleteBtn}
-    onPress={() => {
-      Alert.alert('Delete Audition', `Delete "${item.title}"?`, [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Delete', style: 'destructive',
-onPress: async () => {
-  try {
-    await firestore().collection('auditions').doc(item.id).delete();
-    Alert.alert('✅ Deleted!', 'Audition removed successfully.');
-    // ✅ removed loadAuditions() — listener handles it
-  } catch (e) {
-    Alert.alert('Error', 'Could not delete.');
-  }
-},
-        },
-      ]);
-    }}>
-    <Text style={styles.deleteBtnText}>🗑 Delete Audition</Text>
-  </TouchableOpacity>
-)}
+        <EngagementBar
+          auditionId={item.id}
+          likes={item.likes || 0}
+          likedBy={item.likedBy || []}
+          commentCount={0}
+          views={item.views || 0}
+          shareTitle={item.title || 'Audition'}
+        />
+
+        {/* CTA buttons */}
+        {isExpired ? (
+          <View style={[styles.applyBtn, styles.applyBtnDisabled]}>
+            <Text style={styles.applyBtnText}>Closed</Text>
+          </View>
+        ) : (
+          <View style={styles.auditionBtnRow}>
+            <TouchableOpacity
+              style={styles.contactBtn}
+              onPress={e => { e.stopPropagation?.(); navigation.navigate('AuditionDetail', {audition: item}); }}>
+              <Text style={styles.contactBtnText}>Contact</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.applyBtnFilled}
+              onPress={e => { e.stopPropagation?.(); navigation.navigate('AuditionDetail', {audition: item}); }}>
+              <Text style={styles.applyBtnFilledText}>Apply →</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Delete button — only for audition owner */}
+        {item.directorId === currentUser?.uid && (
+          <TouchableOpacity
+            style={styles.deleteBtn}
+            onPress={() => {
+              Alert.alert('Delete Audition', `Delete "${item.title}"?`, [
+                {text: 'Cancel', style: 'cancel'},
+                {
+                  text: 'Delete', style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await firestore().collection('auditions').doc(item.id).delete();
+                      Alert.alert('✅ Deleted!', 'Audition removed successfully.');
+                    } catch (e) {
+                      Alert.alert('Error', 'Could not delete.');
+                    }
+                  },
+                },
+              ]);
+            }}>
+            <Text style={styles.deleteBtnText}>🗑 Delete Audition</Text>
+          </TouchableOpacity>
+        )}
 
       </TouchableOpacity>
     );
@@ -307,6 +363,13 @@ onPress: async () => {
               ? 'Try changing your search or filter'
               : 'No auditions posted yet. Check back soon!'}
           </Text>
+          {isAdmin && !searchText && selectedRole === 'All' && (
+            <TouchableOpacity
+              style={styles.emptyBtn}
+              onPress={() => navigation.navigate('PostAudition')}>
+              <Text style={styles.emptyBtnText}>+ Post an Audition</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <FlatList
@@ -340,19 +403,21 @@ const styles = StyleSheet.create({
   },
   backBtn: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: '#1C1C1C',
+    backgroundColor: '#121212',
     justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.4, shadowRadius: 8, elevation: 6,
   },
   backBtnText: {color: '#C9956C', fontSize: 22, fontWeight: 'bold'},
   headerTitle: {color: '#FFFFFF', fontSize: 22, fontWeight: 'bold'},
   headerSub: {color: '#A09080', fontSize: 13, marginTop: 2},
   searchContainer: {paddingHorizontal: 16, marginBottom: 10},
   searchInput: {
-    backgroundColor: '#1C1C1C', borderRadius: 14, padding: 14,
-    color: '#FFFFFF', borderWidth: 1, borderColor: '#2A2A2A', fontSize: 14,
+    backgroundColor: '#060606', borderRadius: 14, padding: 14,
+    color: '#FFFFFF', borderWidth: 1, borderColor: '#1A1A1A', fontSize: 14,
+    elevation: 0,
   },
 
-  /* ✅ FIXED FILTER STYLES */
   filterScroll: {maxHeight: 50, marginBottom: 12},
   filterRow: {
     paddingHorizontal: 16,
@@ -360,23 +425,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   filterChip: {
-    backgroundColor: '#1C1C1C',
+    backgroundColor: '#121212',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderWidth: 0.5,
+    borderColor: '#1E1E1E',
     height: 36,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  filterChipActive: {backgroundColor: '#C9956C', borderColor: '#C9956C'},
+  filterChipActive: {
+    backgroundColor: '#C9956C', borderWidth: 1, borderColor: '#E8C4A0',
+    shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.35, shadowRadius: 10, elevation: 10,
+  },
   filterChipText: {color: '#A09080', fontSize: 13, fontWeight: '600'},
   filterChipTextActive: {color: '#FFFFFF', fontWeight: 'bold'},
 
   card: {
-    backgroundColor: '#1C1C1C', borderRadius: 18, padding: 16,
-    marginBottom: 16, borderWidth: 1, borderColor: '#2A2A2A',
+    backgroundColor: '#141414', borderRadius: 18, padding: 16,
+    marginBottom: 16, borderTopWidth: 2, borderTopColor: '#C9956C44',
+    borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3,
+    borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A',
+    shadowColor: '#000', shadowOffset: {width: 0, height: 8},
+    shadowOpacity: 0.6, shadowRadius: 24, elevation: 8,
   },
   cardTopRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10},
   statusBadge: {borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4},
@@ -385,26 +458,37 @@ const styles = StyleSheet.create({
   statusText: {fontSize: 12, fontWeight: '700', color: '#FFFFFF'},
   saveBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#2A2A2A', borderRadius: 20,
+    backgroundColor: 'rgba(201,149,108,0.08)', borderRadius: 20,
     paddingHorizontal: 12, paddingVertical: 6,
+    borderWidth: 0.5, borderColor: 'rgba(201,149,108,0.3)',
+    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
   saveBtnText: {color: '#FFFFFF', fontSize: 13, fontWeight: '600'},
   cardTitle: {color: '#FFFFFF', fontSize: 18, fontWeight: 'bold', marginBottom: 10, lineHeight: 24},
   metaGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10},
-  metaChip: {backgroundColor: '#2A2A2A', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4},
+  metaChip: {backgroundColor: '#1A1A1A', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 0.5, borderColor: '#1E1E1E'},
   metaChipText: {color: '#A09080', fontSize: 12},
   infoRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8},
   infoText: {color: '#A09080', fontSize: 13},
   deadlineText: {color: '#FBBF24', fontSize: 12, fontWeight: '600'},
   directorText: {color: '#A09080', fontSize: 12, marginBottom: 8},
   descText: {color: '#A09080', fontSize: 13, lineHeight: 20, marginBottom: 10},
-  applyBtn: {backgroundColor: '#C9956C', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 4},
-  applyBtnDisabled: {backgroundColor: '#2A2A2A'},
+  applyBtn: {
+    backgroundColor: '#C9956C', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 4,
+    borderTopWidth: 2, borderTopColor: '#E8C4A0',
+    borderBottomWidth: 2, borderBottomColor: '#7A5535',
+    borderLeftWidth: 0, borderRightWidth: 0,
+    shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.35, shadowRadius: 12, elevation: 8,
+  },
+  applyBtnDisabled: {backgroundColor: '#2A2A2A', shadowColor: 'transparent', elevation: 0},
   applyBtnText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
   emptyContainer: {flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 100},
   emptyEmoji: {fontSize: 60, marginBottom: 16},
   emptyTitle: {color: '#FFFFFF', fontSize: 20, fontWeight: 'bold', marginBottom: 8},
   emptyText: {color: '#A09080', fontSize: 14, textAlign: 'center', paddingHorizontal: 40},
+  emptyBtn: {marginTop: 24, backgroundColor: '#C9956C', borderRadius: 25, paddingVertical: 12, paddingHorizontal: 28, borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', elevation: 6},
+  emptyBtnText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
 
   deleteBtn: {
     backgroundColor: '#2A0A0A', borderRadius: 12, padding: 12,
@@ -412,4 +496,21 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#DC2626',
   },
   deleteBtnText: {color: '#FCA5A5', fontWeight: 'bold', fontSize: 14},
+  categoryPill:       {flexDirection: 'row', alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, marginBottom: 10},
+  categoryPillText:   {fontSize: 11, fontWeight: '700'},
+  budgetRow:          {flexDirection: 'row', gap: 6, marginBottom: 10},
+  budgetPill:         {backgroundColor: 'rgba(251,191,36,0.1)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(251,191,36,0.4)'},
+  budgetPillText:     {color: '#FBBF24', fontSize: 12, fontWeight: '600'},
+  positionsPill:      {backgroundColor: 'rgba(74,222,128,0.1)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)'},
+  positionsPillText:  {color: '#4ADE80', fontSize: 12, fontWeight: '600'},
+  directorRow:        {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8},
+  applicantsText:     {color: '#A09080', fontSize: 11},
+  deadlineRow:        {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10},
+  deadlineLabel:      {color: '#A09080', fontSize: 12},
+  daysLeftText:       {fontSize: 12, fontWeight: '700'},
+  auditionBtnRow:     {flexDirection: 'row', gap: 8, marginTop: 12},
+  contactBtn:         {flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 1.5, borderColor: '#C9956C', backgroundColor: 'transparent'},
+  contactBtnText:     {color: '#C9956C', fontWeight: '700', fontSize: 14},
+  applyBtnFilled:     {flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: '#C9956C'},
+  applyBtnFilledText: {color: '#FFFFFF', fontWeight: '700', fontSize: 14},
 });

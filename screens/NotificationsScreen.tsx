@@ -8,9 +8,9 @@ import firestore from '@react-native-firebase/firestore';
 
 const C = {
   background:   '#0A0A0A',
-  card:         '#1C1C1C',
-  cardElevated: '#242424',
-  border:       '#2A2A2A',
+  card:         '#141414',
+  cardElevated: '#1A1A1A',
+  border:       '#1E1E1E',
   primary:      '#C9956C',
   primaryFaint: 'rgba(201,149,108,0.10)',
   textPrimary:  '#FFFFFF',
@@ -71,7 +71,10 @@ const isProfileNotif = (type: string) =>
 
 // Which notification types navigate to audition detail
 const isAuditionNotif = (type: string) =>
-  ['new_audition', 'shortlisted', 'selected', 'rejected', 'application'].includes(type);
+  ['new_audition', 'shortlisted', 'selected', 'rejected'].includes(type);
+
+const isApplicationNotif = (type: string) =>
+  ['application', 'new_application'].includes(type);
 
 const isCastingRequestNotif = (type: string) =>
   ['casting_request', 'new_casting_request'].includes(type);
@@ -185,16 +188,18 @@ export default function NotificationsScreen({navigation}: any) {
   ) {
     navigation.navigate('MyApplications');
 
-  } else if (item.type === 'comment' && item.auditionId) {
+  } else if (isApplicationNotif(item.type)) {
+    navigation.navigate('DirectorDashboard');
     navigation.navigate('AuditionDetail', {
       auditionId: item.auditionId,
     });
 
-  } else if (isAuditionNotif(item.type) && item.auditionId) {
-    navigation.navigate('AuditionDetail', {
-      auditionId: item.auditionId,
-    });
-
+    } else if (isAuditionNotif(item.type)) {
+  if (item.auditionId) {
+    navigation.navigate('AuditionDetail', {auditionId: item.auditionId});
+  } else {
+    navigation.navigate('BrowseAuditions');
+  }
   } else if (isProfileNotif(item.type) && senderId) {
     navigation.navigate('PublicProfile', {
       userId: senderId,
@@ -318,6 +323,11 @@ export default function NotificationsScreen({navigation}: any) {
             <Text style={styles.emptyIcon}>🔔</Text>
             <Text style={styles.emptyTitle}>No notifications yet</Text>
             <Text style={styles.emptySubText}>Connect with creators to get updates</Text>
+            <TouchableOpacity
+              style={styles.emptyBtn}
+              onPress={() => navigation.navigate('Main', {screen: 'Home'})}>
+              <Text style={styles.emptyBtnText}>Explore Auditions</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           notifications.map(item => {
@@ -325,6 +335,7 @@ export default function NotificationsScreen({navigation}: any) {
             const isTappable =
   isProfileNotif(item.type) ||
   isAuditionNotif(item.type) ||
+  isApplicationNotif(item.type) ||
   isCastingRequestNotif(item.type) ||
   isCastingApprovedNotif(item.type) ||
   isMessageNotif(item.type) ||
@@ -382,7 +393,9 @@ export default function NotificationsScreen({navigation}: any) {
                     {/* Tap hint for profile notifications */}
                     {isTappable && !isConnectRequest && (
   <Text style={styles.tapHint}>
-    {isCastingRequestNotif(item.type)
+    {isApplicationNotif(item.type)
+      ? 'Tap to view applications →'
+      : isCastingRequestNotif(item.type)
       ? 'Tap to review application →'
       : isMessageNotif(item.type)
       ? 'Tap to open chat →'
@@ -423,16 +436,18 @@ const styles = StyleSheet.create({
   heading:    {color: C.textPrimary, fontSize: 20, fontWeight: 'bold'},
   badge:      {backgroundColor: C.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4},
   badgeText:  {color: '#FFFFFF', fontSize: 12, fontWeight: 'bold'},
-  clearBtn:   {backgroundColor: C.card, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: C.primary},
+  clearBtn:   {backgroundColor: 'rgba(201,149,108,0.08)', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 0.5, borderColor: 'rgba(201,149,108,0.3)', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4},
   clearBtnText: {color: C.primary, fontSize: 12, fontWeight: 'bold'},
 
   emptyBox:     {alignItems: 'center', marginTop: 80},
   emptyIcon:    {fontSize: 50, marginBottom: 16},
   emptyTitle:   {color: C.textPrimary, fontSize: 18, fontWeight: 'bold', marginBottom: 8},
   emptySubText: {color: C.textSecondary, fontSize: 14, textAlign: 'center'},
+  emptyBtn:     {marginTop: 24, backgroundColor: C.primary, borderRadius: 25, paddingVertical: 12, paddingHorizontal: 28, borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', elevation: 6},
+  emptyBtnText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
 
-  card:               {backgroundColor: C.card, borderRadius: 16, padding: 16, marginBottom: 12},
-  connectRequestCard: {backgroundColor: '#1A1410'},
+  card:               {backgroundColor: C.card, borderRadius: 16, padding: 16, marginBottom: 12, borderTopWidth: 2, borderTopColor: '#C9956C44', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 8}, shadowOpacity: 0.6, shadowRadius: 24, elevation: 8},
+  connectRequestCard: {backgroundColor: '#1A1410', borderWidth: 1, borderColor: '#C9956C33', borderLeftWidth: 3, borderLeftColor: '#C9956C', elevation: 6},
   cardRow:            {flexDirection: 'row', gap: 12, alignItems: 'flex-start'},
   iconBox:            {width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center'},
   icon:               {fontSize: 20},
@@ -440,7 +455,7 @@ const styles = StyleSheet.create({
   cardContent: {flex: 1},
   cardHeader:  {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4},
   cardTitle:   {color: C.textPrimary, fontSize: 15, fontWeight: 'bold', flex: 1},
-  unreadDot:   {width: 8, height: 8, borderRadius: 4, backgroundColor: C.primary, marginLeft: 6},
+  unreadDot:   {width: 7, height: 7, borderRadius: 3.5, backgroundColor: C.primary, marginLeft: 6, shadowColor: '#C9956C', shadowOpacity: 0.8, shadowRadius: 6, elevation: 4},
   cardMessage: {color: C.textSecondary, fontSize: 13, marginBottom: 6, lineHeight: 18},
   cardTime:    {color: C.textSecondary, fontSize: 11},
   tapHint:     {color: C.primary, fontSize: 11, marginTop: 6, fontWeight: '500'},

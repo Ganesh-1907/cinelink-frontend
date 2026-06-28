@@ -29,9 +29,10 @@ import MyFilmsScreen from './screens/MyFilmsScreen';
 import CrewMarketplaceScreen from './screens/CrewMarketplaceScreen';
 import CrewScreen from './screens/CrewScreen';
 import ChatListScreen from './screens/ChatListScreen';
+import DiscoverScreen from './screens/DiscoverScreen';
 import ChatScreen from './screens/ChatScreen';
 import NotificationsScreen from './screens/NotificationsScreen';
-import ContestScreen from './screens/ContestScreen';
+import BrowseContestsScreen from './screens/BrowseContestsScreen';
 import PostContestScreen from './screens/PostContestScreen';
 import ContestDetailScreen from './screens/ContestDetailScreen';
 import MyContestsScreen from './screens/MyContestsScreen';
@@ -51,6 +52,11 @@ import PrivacyPolicyScreen from './screens/PrivacyPolicyScreen';
 import TermsScreen from './screens/TermsScreen';
 import FollowersScreen from './screens/FollowersScreen';
 import FeedbackModal from './screens/FeedbackModal';
+import IndustryGuideScreen from './screens/IndustryGuideScreen';
+import PhoneLoginScreen from './screens/PhoneLoginScreen';
+import PremiumCineLinkScreen from './src/screens/Premium/PremiumCineLinkScreen';
+import {LiquidNav} from './components/LiquidNav';
+import {GestureHandlerRootView} from 'react-native-gesture-handler';
 
 export const navigationRef = createNavigationContainerRef();
 registerBackgroundHandler();
@@ -68,62 +74,16 @@ const Stack = createNativeStackNavigator();
 const Tab   = createBottomTabNavigator();
 
 function TabNavigator() {
-  const [unreadCount, setUnreadCount]         = useState(0);
-  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
-
-  useEffect(() => {
-    const currentUser = auth().currentUser;
-    if (!currentUser) return;
-    const unsub = firestore()
-      .collection('notifications')
-      .where('userId', '==', currentUser.uid)
-      .where('read', '==', false)
-      .onSnapshot(
-        snapshot => setUnreadNotifCount(snapshot.docs.length),
-        error => console.log('NOTIF BADGE ERROR:', error.message),
-      );
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    const currentUser = auth().currentUser;
-    if (!currentUser) return;
-    const unsub = firestore()
-      .collection('chats')
-      .where('participants', 'array-contains', currentUser.uid)
-      .onSnapshot(
-        snapshot => {
-          let total = 0;
-          snapshot.docs.forEach(doc => {
-            const data = doc.data();
-            total += data.unreadCount?.[currentUser.uid] || 0;
-          });
-          setUnreadCount(total);
-        },
-        error => console.log('CHAT BADGE ERROR:', error.message),
-      );
-    return () => unsub();
-  }, []);
 
   return (
     <Tab.Navigator
+      tabBar={(props) => (
+        <LiquidNav navigation={props.navigation} activeTab={props.state.index} />
+      )}
       screenOptions={{
         headerStyle:       {backgroundColor: COLORS.background},
         headerTintColor:   COLORS.textPrimary,
         headerShadowVisible: false,
-        tabBarStyle: {
-          backgroundColor: COLORS.surface,
-          borderTopColor:  COLORS.border,
-          borderTopWidth:  0,
-          height:          66,
-          paddingBottom:   8,
-          paddingTop:      8,
-          elevation:       8,
-          position:        'absolute',
-        },
-        tabBarActiveTintColor:   COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textSecondary,
-        tabBarLabelStyle:        {fontSize: 11, fontWeight: '600'},
       }}>
 
       <Tab.Screen
@@ -139,6 +99,14 @@ function TabNavigator() {
         }}
       />
       <Tab.Screen
+        name="Contests"
+        component={BrowseContestsScreen}
+        options={{
+          title: 'Contests', headerShown: false,
+          tabBarIcon: ({color}) => <Text style={{fontSize: 20, color}}>🏆</Text>,
+        }}
+      />
+      <Tab.Screen
         name="Crew"
         component={CrewScreen}
         options={{
@@ -146,36 +114,13 @@ function TabNavigator() {
           tabBarIcon: ({color}) => <Text style={{fontSize: 20, color}}>🎥</Text>,
         }}
       />
+
       <Tab.Screen
-        name="Contests"
-        component={ContestScreen}
+        name="Discover"
+        component={DiscoverScreen}
         options={{
-          title: 'Contests', headerShown: false,
-          tabBarIcon: ({color}) => <Text style={{fontSize: 20, color}}>🏆</Text>,
-        }}
-      />
-      <Tab.Screen
-        name="Chats"
-        component={ChatListScreen}
-        options={{
-          title: 'Chats', headerTitle: 'Messages',
-          tabBarIcon: ({color}) => (
-            <View style={{width: 28, height: 28, justifyContent: 'center', alignItems: 'center'}}>
-              <Text style={{fontSize: 20, color}}>💬</Text>
-              {unreadCount > 0 && (
-                <View style={{
-                  position: 'absolute', top: -4, right: -6,
-                  backgroundColor: COLORS.primary, borderRadius: 10,
-                  minWidth: 18, height: 18,
-                  justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3,
-                }}>
-                  <Text style={{color: '#fff', fontSize: 10, fontWeight: 'bold'}}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </Text>
-                </View>
-              )}
-            </View>
-          ),
+          title: 'Discover', headerShown: false,
+          tabBarIcon: ({color}) => <Text style={{fontSize: 20, color}}>✨</Text>,
         }}
       />
       <Tab.Screen
@@ -198,6 +143,9 @@ function MainStack() {
         headerTintColor: COLORS.textPrimary,
         headerShadowVisible: false,
         contentStyle:   {backgroundColor: COLORS.background},
+        animation:      'slide_from_right',
+        animationDuration: 280,
+        gestureEnabled: true,
       }}>
       <Stack.Screen name="Main"             component={TabNavigator}           options={{headerShown: false}} />
       <Stack.Screen name="SuggestedFollows" component={SuggestedFollowsScreen} options={{headerShown: false}} />
@@ -211,6 +159,7 @@ function MainStack() {
       <Stack.Screen name="UploadFilm"       component={UploadFilmScreen}       options={{title: 'Upload Short Film', headerShown: false}} />
       <Stack.Screen name="FilmDetail"       component={FilmDetailScreen}       options={{title: 'Film Details'}} />
       <Stack.Screen name="MyFilms"          component={MyFilmsScreen}          options={{title: 'My Films'}} />
+      <Stack.Screen name="Chats"            component={ChatListScreen}         options={{title: 'Messages', headerShown: false}} />
       <Stack.Screen name="ChatScreen"       component={ChatScreen}             options={{title: 'Chat', headerShown: false}} />
       <Stack.Screen name="Notifications"    component={NotificationsScreen}    options={{title: 'Notifications'}} />
       <Stack.Screen name="PostContest"      component={PostContestScreen}      options={{title: 'Create Contest'}} />
@@ -232,6 +181,8 @@ function MainStack() {
       <Stack.Screen name="PrivacyPolicy"    component={PrivacyPolicyScreen}    options={{headerShown: false}} />
       <Stack.Screen name="Terms"            component={TermsScreen}            options={{headerShown: false}} />
       <Stack.Screen name="Followers"        component={FollowersScreen}        options={{headerShown: false}} />
+      <Stack.Screen name="IndustryGuide"    component={IndustryGuideScreen}    options={{headerShown: false}} />
+      <Stack.Screen name="PremiumCineLink" component={PremiumCineLinkScreen}  options={{headerShown: false}} />
     </Stack.Navigator>
   );
 }
@@ -240,6 +191,7 @@ function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{headerShown: false}}>
       <Stack.Screen name="Auth"         component={AuthScreen} />
+      <Stack.Screen name="PhoneLogin"   component={PhoneLoginScreen} />
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
       <Stack.Screen name="Terms"        component={TermsScreen} />
     </Stack.Navigator>
@@ -358,27 +310,29 @@ function App(): JSX.Element {
   // ── Loading ───────────────────────────────────────────────
   if (loading || showOnboarding === null) {
     return (
-      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background}}>
-        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
+      <GestureHandlerRootView style={{flex: 1}}>
+        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background}}>
+          <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      </GestureHandlerRootView>
     );
   }
 
   // ── Onboarding ────────────────────────────────────────────
   if (showOnboarding) {
     return (
-      <>
+      <GestureHandlerRootView style={{flex: 1}}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
         <OnboardingScreen onDone={() => setShowOnboarding(false)} />
-      </>
+      </GestureHandlerRootView>
     );
   }
 
   // ── Suggested Follows ─────────────────────────────────────
   if (user && showSuggestedFollows) {
     return (
-      <>
+      <GestureHandlerRootView style={{flex: 1}}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
         <SuggestedFollowsScreen
           navigation={{
@@ -390,22 +344,24 @@ function App(): JSX.Element {
           }}
           route={{params: {}}}
         />
-      </>
+      </GestureHandlerRootView>
     );
   }
 
   // ── Main App ──────────────────────────────────────────────
   return (
-    <NavigationContainer ref={navigationRef} onReady={() => setNavigator(navigationRef)}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-      {user ? <MainStack /> : <AuthStack />}
+    <GestureHandlerRootView style={{flex: 1}}>
+      <NavigationContainer ref={navigationRef} onReady={() => setNavigator(navigationRef)}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+        {user ? <MainStack /> : <AuthStack />}
 
-      {/* ── Feedback Modal — shown once after 1 hour ── */}
-      <FeedbackModal
-        visible={showFeedback}
-        onClose={() => setShowFeedback(false)}
-      />
-    </NavigationContainer>
+        {/* ── Feedback Modal — shown once after 1 hour ── */}
+        <FeedbackModal
+          visible={showFeedback}
+          onClose={() => setShowFeedback(false)}
+        />
+      </NavigationContainer>
+    </GestureHandlerRootView>
   );
 }
 

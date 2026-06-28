@@ -9,10 +9,12 @@ import {
   ActivityIndicator,
   Alert,
   SafeAreaView,
-  Platform,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import {parseDeadline} from '../utils/contestUtils';
+
+const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
 
 const CONTEST_TYPES = [
   'Short Film',
@@ -40,9 +42,19 @@ export default function PostContestScreen({navigation}: any) {
     user?.email?.split('@')[0] ||
     'Creator';
 
+  const isAdmin = user?.email === ADMIN_EMAIL;
+
   const postContest = async () => {
+    if (!isAdmin) {
+      Alert.alert('Access Denied', 'Only admins can create contests.');
+      return;
+    }
     if (!title.trim() || !prize.trim() || !deadline.trim()) {
       Alert.alert('Missing Info', 'Please fill Title, Prize and Deadline!');
+      return;
+    }
+    if (!parseDeadline(deadline.trim())) {
+      Alert.alert('Invalid Deadline', 'Use format YYYY-MM-DD (e.g. 2026-07-30)');
       return;
     }
 

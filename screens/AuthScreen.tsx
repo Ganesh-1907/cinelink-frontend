@@ -37,6 +37,7 @@ export default function AuthScreen({navigation}: any) {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+const [showPassword, setShowPassword] = useState(false);
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
@@ -160,6 +161,13 @@ export default function AuthScreen({navigation}: any) {
           )}
         </TouchableOpacity>
 
+        {/* ── PHONE SIGN IN ─────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.phoneBtn}
+          onPress={() => navigation.navigate('PhoneLogin')}>
+          <Text style={styles.phoneBtnText}>📱 Login with Phone Number</Text>
+        </TouchableOpacity>
+
         {/* ── DIVIDER ───────────────────────────────────────── */}
         <View style={styles.dividerRow}>
           <View style={styles.dividerLine} />
@@ -221,15 +229,19 @@ export default function AuthScreen({navigation}: any) {
           />
 
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder={authMode === 'signup' ? 'Min 6 characters' : 'Your password'}
-            placeholderTextColor={C.textTertiary}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-
+<View style={styles.passwordRow}>
+  <TextInput
+    style={styles.passwordInput}
+    placeholder={authMode === 'signup' ? 'Min 6 characters' : 'Your password'}
+    placeholderTextColor={C.textTertiary}
+    value={password}
+    onChangeText={setPassword}
+    secureTextEntry={!showPassword}
+  />
+  <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
+    <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
+  </TouchableOpacity>
+</View>
           <TouchableOpacity
             style={[styles.primaryBtn, loading && styles.btnDisabled]}
             onPress={authMode === 'login' ? handleEmailLogin : handleEmailSignup}
@@ -313,6 +325,15 @@ const styles = StyleSheet.create({
   googleIcon:    {color: '#4285F4', fontSize: 20, fontWeight: 'bold'},
   googleBtnText: {color: C.textPrimary, fontWeight: '600', fontSize: 16},
 
+  // ── Phone Button ─────────────────────────────────────────────
+  phoneBtn: {
+    borderRadius: 14, padding: 16,
+    alignItems: 'center', marginBottom: 16,
+    borderWidth: 1.5, borderColor: C.primary,
+    backgroundColor: C.primaryFaint,
+  },
+  phoneBtnText: {color: C.primary, fontWeight: '600', fontSize: 15},
+
   // ── Divider ──────────────────────────────────────────────────
   dividerRow:  {flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10},
   dividerLine: {flex: 1, height: 1, backgroundColor: C.border},
@@ -366,7 +387,11 @@ const styles = StyleSheet.create({
   primaryBtnText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 16, letterSpacing: 0.3},
 
   // ── Forgot ───────────────────────────────────────────────────
-  forgotBtn:  {alignItems: 'center', marginTop: 14},
+  passwordRow:   {flexDirection: 'row', alignItems: 'center', backgroundColor: C.cardElevated, borderRadius: 12, borderWidth: 1, borderColor: C.border, marginBottom: 16},
+passwordInput: {flex: 1, padding: 14, color: C.textPrimary, fontSize: 15},
+eyeBtn:        {paddingHorizontal: 14},
+eyeIcon:       {fontSize: 18},
+forgotBtn:     {alignItems: 'center', marginTop: 14},
   forgotText: {color: C.primaryLight, fontSize: 14},
 
   // ── Footer ───────────────────────────────────────────────────

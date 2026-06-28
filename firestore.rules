@@ -17,7 +17,20 @@ service cloud.firestore {
       // Only return safe fields to other users — FCM token stays private
       allow read: if isLoggedIn();
       allow create: if isLoggedIn() && isOwner(userId);
-      allow update: if isLoggedIn() && (isOwner(userId) || isAdmin());
+      allow update: if isLoggedIn() && (
+        isAdmin() ||
+        (
+          isOwner(userId) &&
+          // Block client from ever writing premium/verified fields — Cloud Functions only
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'premiumTier', 'premiumExpiry', 'verifiedReal',
+            'subscriptionId', 'isTopDirector', 'verifiedProductionHouse'
+          ])
+        ) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'profileLikes', 'profileLikedBy', 'profileViews'
+        ])
+      );
       allow delete: if isAdmin();
     }
     match /users/{userId}/followers/{followerId} {
@@ -28,17 +41,25 @@ service cloud.firestore {
       allow read: if isLoggedIn();
       allow write: if isLoggedIn() && isOwner(userId);
     }
+    match /users/{userId}/comments/{commentId} {
+      allow read: if isLoggedIn();
+      allow create: if isLoggedIn() && isNotBanned();
+      allow delete: if isLoggedIn() && (resource.data.authorId == request.auth.uid || isAdmin());
+    }
 
     // ── Chats ────────────────────────────────────────────────
     match /chats/{chatId} {
-      // Only participants can read/write the chat
-      allow read, write: if isLoggedIn()
-        && isNotBanned()
+      allow read: if isLoggedIn()
         && request.auth.uid in resource.data.participants;
-      // Allow create if you're adding yourself as participant
+      // Allow create if you're adding yourself as a participant
       allow create: if isLoggedIn()
         && isNotBanned()
         && request.auth.uid in request.resource.data.participants;
+      // Participants can update chat metadata (lastMessage, lastMessageTime, typingUser, unreadCount)
+      allow update: if isLoggedIn()
+        && request.auth.uid in resource.data.participants;
+      allow delete: if isLoggedIn()
+        && request.auth.uid in resource.data.participants;
       match /messages/{messageId} {
         allow read: if isLoggedIn()
           && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
@@ -48,7 +69,12 @@ service cloud.firestore {
           && request.resource.data.senderId == request.auth.uid;
         allow delete: if isLoggedIn()
           && resource.data.senderId == request.auth.uid;
-        allow update: if isAdmin();
+        allow update: if isAdmin()
+          || (
+            isLoggedIn()
+            && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
+          );
       }
     }
 
@@ -104,27 +130,30 @@ service cloud.firestore {
     // ── Contests ─────────────────────────────────────────────
     match /contests/{contestId} {
       allow read: if isLoggedIn();
-      // Admin OR approved director can create contests
-      allow create: if isLoggedIn() && (isAdmin() || isApprovedDirector()) && isNotBanned();
-      // Only admin can update/delete
+      allow create: if isLoggedIn() && isAdmin();
       allow update, delete: if isAdmin();
     }
 
     // ── Contest Entries ──────────────────────────────────────
     match /contestEntries/{entryId} {
       allow read: if isLoggedIn();
-      // Anyone not banned can submit
-      allow create: if isLoggedIn() && isNotBanned();
-      // Only admin can update jury score/finalScore
-      // Entry owner can update only their own non-score fields
+      // Submitter can only create entries for themselves
+      allow create: if isLoggedIn() && isNotBanned()
+        && request.resource.data.userId == request.auth.uid;
+      // Admin: anything
+      // Entry owner: update own non-score fields only
+      // Any non-banned user: increment votes + recalculate finalScore (voting)
       allow update: if isLoggedIn() && (
         isAdmin() ||
         (
           resource.data.userId == request.auth.uid &&
-          // Prevent users from changing votes/scores themselves
           !('votes' in request.resource.data) &&
           !('juryScore' in request.resource.data) &&
           !('finalScore' in request.resource.data)
+        ) ||
+        (
+          isNotBanned() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'finalScore'])
         )
       );
       allow delete: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
@@ -146,6 +175,13 @@ service cloud.firestore {
       allow read: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isLoggedIn();
       allow update, delete: if isAdmin();
+    }
+
+    // ── Subscriptions ────────────────────────────────────────
+    match /subscriptions/{subscriptionId} {
+      // Users can only read their own subscription history
+      allow read: if isLoggedIn() && resource.data.userId == request.auth.uid;
+      // All writes are Cloud Functions only — no client writes permitted
     }
 
     // ── Reports ──────────────────────────────────────────────
@@ -204,8 +240,12 @@ service cloud.firestore {
     match /cinereels/{reelId} {
       allow read: if isLoggedIn();
       allow create: if isLoggedIn() && isNotBanned();
-      allow update: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow delete: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isLoggedIn() && (
+        resource.data.creatorId == request.auth.uid ||
+        isAdmin() ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'views', 'comments', 'likedBy'])
+      );
+      allow delete: if isLoggedIn() && (resource.data.creatorId == request.auth.uid || isAdmin());
     }
 
     // ── Crew Posts ───────────────────────────────────────────
@@ -245,7 +285,14 @@ service cloud.firestore {
     match /connections/{connId} {
       allow read: if isLoggedIn() && request.auth.uid in resource.data.users;
       allow create: if isLoggedIn() && request.auth.uid in request.resource.data.users;
+      allow update: if isLoggedIn() && request.auth.uid in resource.data.users;
       allow delete: if isLoggedIn() && request.auth.uid in resource.data.users;
+    }
+
+    // ── Feedback ─────────────────────────────────────────────
+    match /feedback/{docId} {
+      allow read: if isAdmin();
+      allow create: if isLoggedIn();
     }
   }
 }

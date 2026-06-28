@@ -17,11 +17,48 @@ export default function FollowersScreen({route, navigation}: any) {
   const [followers, setFollowers] = useState<any[]>([]);
   const [following, setFollowing] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const currentUser = auth().currentUser;
 
   useEffect(() => {
     loadAll();
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    firestore()
+      .collection('users').doc(currentUser.uid)
+      .collection('following')
+      .get()
+      .then(snap => setFollowingIds(new Set(snap.docs.map(d => d.id))))
+      .catch(e => console.log(e));
+  }, []);
+
+  const toggleFollow = async (targetId: string) => {
+    if (!currentUser) return;
+    const isF = followingIds.has(targetId);
+    const currentUserName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+    try {
+      const followerRef = firestore().collection('users').doc(targetId)
+        .collection('followers').doc(currentUser.uid);
+      const followingRef = firestore().collection('users').doc(currentUser.uid)
+        .collection('following').doc(targetId);
+      if (isF) {
+        await followerRef.delete();
+        await followingRef.delete();
+        setFollowingIds(prev => { const s = new Set(prev); s.delete(targetId); return s; });
+      } else {
+        await followerRef.set({
+          userId: currentUser.uid, userName: currentUserName,
+          email: currentUser.email, followedAt: firestore.FieldValue.serverTimestamp(),
+        });
+        await followingRef.set({
+          userId: targetId, followedAt: firestore.FieldValue.serverTimestamp(),
+        });
+        setFollowingIds(prev => new Set([...prev, targetId]));
+      }
+    } catch (e) { console.log(e); }
+  };
 
   const loadAll = async () => {
     setLoading(true);
@@ -40,21 +77,18 @@ export default function FollowersScreen({route, navigation}: any) {
       });
 
       const fetchUsers = async (ids: string[]) => {
-        const users = [];
-        for (const id of ids) {
-          if (!id) continue;
-          try {
-            const doc = await firestore().collection('users').doc(id).get();
-            if (doc.exists) {
-              users.push({id: doc.id, ...doc.data()});
-            } else {
-              users.push({id, displayName: id, role: 'Creator'});
+        const docs = await Promise.all(
+          ids.filter(Boolean).map(async id => {
+            try {
+              const doc = await firestore().collection('users').doc(id).get();
+              return doc.exists ? {id: doc.id, ...doc.data()} : {id, displayName: id, role: 'Creator'};
+            } catch (e) {
+              console.log('fetchUsers error for', id, e);
+              return null;
             }
-          } catch (e) {
-            console.log('fetchUsers error for', id, e);
-          }
-        }
-        return users;
+          })
+        );
+        return docs.filter(Boolean);
       };
 
       const [followerUsers, followingUsers] = await Promise.all([
@@ -105,8 +139,17 @@ export default function FollowersScreen({route, navigation}: any) {
         </View>
 
         {!isCurrentUser && (
-          <View style={styles.viewBtn}>
-            <Text style={styles.viewBtnText}>View →</Text>
+          <View style={styles.actionCol}>
+            <TouchableOpacity
+              style={[styles.followPill, followingIds.has(item.id) && styles.followingPill]}
+              onPress={e => { e.stopPropagation?.(); toggleFollow(item.id); }}>
+              <Text style={styles.followPillText}>
+                {followingIds.has(item.id) ? '✓ Following' : '+ Follow'}
+              </Text>
+            </TouchableOpacity>
+            <View style={styles.viewBtn}>
+              <Text style={styles.viewBtnText}>View →</Text>
+            </View>
           </View>
         )}
       </TouchableOpacity>
@@ -224,4 +267,9 @@ const styles = StyleSheet.create({
   emptyEmoji:    {fontSize: 60, marginBottom: 16},
   emptyTitle:    {color: '#FFFFFF', fontSize: 18, fontWeight: 'bold', marginBottom: 8, textAlign: 'center'},
   emptySubtitle: {color: '#A09080', fontSize: 14, textAlign: 'center', lineHeight: 22},
+
+  actionCol:     {alignItems: 'center', gap: 6, marginLeft: 8},
+  followPill:    {backgroundColor: '#C9956C', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#E8C4A0'},
+  followingPill: {backgroundColor: '#2A2A2A', borderColor: '#C9956C'},
+  followPillText:{color: '#FFFFFF', fontSize: 11, fontWeight: 'bold'},
 });

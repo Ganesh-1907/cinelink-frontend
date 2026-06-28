@@ -15,16 +15,19 @@ export default function MovieDetails({route}: any) {
 
   return (
     <ScrollView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#020617" />
+      <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
-      <Image
-        source={{
-          uri: movie.poster_path
-            ? `${IMAGE_BASE_URL}${movie.poster_path}`
-            : 'https://via.placeholder.com/400x600?text=No+Image',
-        }}
-        style={styles.poster}
-      />
+      {movie.poster_path ? (
+        <Image
+          source={{uri: `${IMAGE_BASE_URL}${movie.poster_path}`}}
+          style={styles.poster}
+        />
+      ) : (
+        <View style={styles.posterPlaceholder}>
+          <Text style={styles.posterPlaceholderText}>🎬</Text>
+          <Text style={styles.posterPlaceholderLabel}>No Poster</Text>
+        </View>
+      )}
 
       <View style={styles.content}>
         <Text style={styles.title}>{movie.title}</Text>
@@ -71,18 +74,35 @@ export default function MovieDetails({route}: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#020617',
+    backgroundColor: '#0A0A0A',
   },
   poster: {
     width: '100%',
     height: 450,
     resizeMode: 'cover',
   },
+  posterPlaceholder: {
+    width: '100%',
+    height: 450,
+    backgroundColor: '#1C1C1C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2A2A2A',
+  },
+  posterPlaceholderText: {
+    fontSize: 64,
+    marginBottom: 12,
+  },
+  posterPlaceholderLabel: {
+    color: '#A09080',
+    fontSize: 14,
+  },
   content: {
     padding: 20,
   },
   title: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 26,
     fontWeight: 'bold',
     marginBottom: 12,
@@ -98,17 +118,17 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   date: {
-    color: '#94A3B8',
+    color: '#A09080',
     fontSize: 16,
   },
   sectionTitle: {
-    color: '#6366F1',
+    color: '#C9956C',
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 8,
   },
   overview: {
-    color: '#CBD5E1',
+    color: '#FFFFFF',
     fontSize: 15,
     lineHeight: 24,
     marginBottom: 24,
@@ -119,21 +139,21 @@ const styles = StyleSheet.create({
   },
   statBox: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#1C1C1C',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     marginHorizontal: 4,
     borderWidth: 1,
-    borderColor: '#1E293B',
+    borderColor: '#2A2A2A',
   },
   statValue: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 20,
     fontWeight: 'bold',
   },
   statLabel: {
-    color: '#64748B',
+    color: '#A09080',
     fontSize: 12,
     marginTop: 4,
   },

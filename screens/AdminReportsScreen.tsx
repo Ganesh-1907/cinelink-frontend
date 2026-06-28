@@ -425,9 +425,15 @@ export default function AdminReportsScreen({navigation}: any) {
               {reviewedApprovals.length > 0 && (
                 <>
                   <Text style={styles.userSectionTitle}>📁 Reviewed ({reviewedApprovals.length})</Text>
-                  {reviewedApprovals.map(req => (
-                    <View key={req.id} style={[styles.approvalCard, req.status === 'approved' ? styles.approvalCardApproved : styles.approvalCardRejected]}>
-                      <View style={styles.approvalHeader}>
+{reviewedApprovals.map(req => (
+  <TouchableOpacity
+    key={req.id}
+    style={[styles.approvalCard, req.status === 'approved' ? styles.approvalCardApproved : styles.approvalCardRejected]}
+    onPress={() => navigation.navigate('PublicProfile', { userId: req.userId })}
+    activeOpacity={0.8}
+  >
+    <View style={styles.approvalHeader}>
+
                         <View style={styles.approvalAvatar}>
                           <Text style={styles.approvalAvatarText}>{(req.userName || 'U').charAt(0).toUpperCase()}</Text>
                         </View>
@@ -440,7 +446,7 @@ export default function AdminReportsScreen({navigation}: any) {
                           </View>
                         </View>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </>
               )}
@@ -582,27 +588,6 @@ export default function AdminReportsScreen({navigation}: any) {
     </ScrollView>
   );
 }
-
-// DEBUG: paste this in any onPress temporarily
-const debugNotifications = async () => {
-  const adminUser = auth().currentUser;
-  console.log('Admin UID:', adminUser?.uid);
-  console.log('Admin email:', adminUser?.email);
-  
-  // Check what's in notifications collection
-  const allNotifs = await firestore().collection('notifications').get();
-  console.log('Total notifications in DB:', allNotifs.docs.length);
-  allNotifs.docs.forEach(doc => {
-    console.log('Notif:', JSON.stringify(doc.data()));
-  });
-
-  // Check castingRequests
-  const allRequests = await firestore().collection('castingRequests').get();
-  console.log('Total casting requests:', allRequests.docs.length);
-  allRequests.docs.forEach(doc => {
-    console.log('Request:', JSON.stringify(doc.data()));
-  });
-};
 
 const styles = StyleSheet.create({
   container:   {flex: 1, backgroundColor: '#0A0A0A', padding: 16},

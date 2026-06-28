@@ -14,8 +14,8 @@ apply plugin: 'com.google.firebase.crashlytics'
         applicationId "com.cinelink"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 4
+        versionName "1.0.3"
         missingDimensionStrategy 'store', 'play'
     }
 
@@ -65,6 +65,13 @@ buildTypes {
     lintOptions {
         disable "MissingDimen"
         disable "RtlSymmetry"
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.core:core:1.13.1'
+        force 'androidx.core:core-ktx:1.13.1'
     }
 }
 

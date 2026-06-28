@@ -1,12 +1,16 @@
-﻿import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, Image, Linking, Alert,
+  ActivityIndicator, Image, Linking, Alert, Animated,
 } from 'react-native';
+import ImageViewing from 'react-native-image-viewing';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
+import {LiquidPress} from '../components/LiquidPress';
+import {RippleIcon} from '../components/RippleIcon';
 
 const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+const ADMIN_UID   = 'moVQIEK5RqhXUOf4wk1L7913kZZ2';
 
 const cleanName = (raw: string | null | undefined): string => {
   if (!raw) return 'Creator';
@@ -16,28 +20,64 @@ const cleanName = (raw: string | null | undefined): string => {
 const PublicProfileScreen = ({route, navigation}: any) => {
   const {userId} = route.params;
   const currentUser = auth().currentUser;
-  const isAdmin = currentUser?.email === ADMIN_EMAIL;
+  const isAdmin     = currentUser?.email === ADMIN_EMAIL || currentUser?.uid === ADMIN_UID;
 
-  const [userData, setUserData]           = useState<any>(null);
-  const [loading, setLoading]             = useState(true);
-  const [isFollowing, setIsFollowing]     = useState(false);
+  const [userData, setUserData]             = useState<any>(null);
+  const [loading, setLoading]               = useState(true);
+  const [isFollowing, setIsFollowing]       = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-  const [followLoading, setFollowLoading] = useState(false);
-  const [isBanned, setIsBanned]           = useState(false);
+  const [followLoading, setFollowLoading]   = useState(false);
+  const [isBanned, setIsBanned]             = useState(false);
 
   // ── Connection state ──────────────────────────────────────
-  const [isConnected, setIsConnected]             = useState(false);
+  const [isConnected, setIsConnected]               = useState(false);
   const [connectRequestSent, setConnectRequestSent] = useState(false);
-  const [connectLoading, setConnectLoading]       = useState(false);
+  const [connectLoading, setConnectLoading]         = useState(false);
+
+  // ── Image viewer state ────────────────────────────────────
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [viewerIndex, setViewerIndex]     = useState(0);
+  const [viewerImages, setViewerImages]   = useState<{uri: string}[]>([]);
+
+  // ── Toast state ───────────────────────────────────────────
+  const [toastVisible, setToastVisible] = useState(false);
+  const toastOpacity = useState(new Animated.Value(0))[0];
+  const skeletonOpacity = useState(new Animated.Value(0.3))[0];
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonOpacity, {toValue: 0.7, duration: 800, useNativeDriver: true}),
+        Animated.timing(skeletonOpacity, {toValue: 0.3, duration: 800, useNativeDriver: true}),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  const showToast = () => {
+    setToastVisible(true);
+    toastOpacity.setValue(0);
+    Animated.sequence([
+      Animated.timing(toastOpacity, {toValue: 1, duration: 200, useNativeDriver: true}),
+      Animated.delay(2000),
+      Animated.timing(toastOpacity, {toValue: 0, duration: 600, useNativeDriver: true}),
+    ]).start(() => setToastVisible(false));
+  };
 
   const isOwnProfile = currentUser?.uid === userId;
 
   useEffect(() => {
+    setLoading(true);
+    setUserData(null);
+    setIsFollowing(false);
+    setIsConnected(false);
+    setConnectRequestSent(false);
     loadUser();
     checkFollowing();
     if (!isOwnProfile) checkConnectionStatus();
-  }, []);
+  }, [userId]);
 
   const loadUser = async () => {
     try {
@@ -55,7 +95,7 @@ const PublicProfileScreen = ({route, navigation}: any) => {
   };
 
   useEffect(() => {
-    const unsubF = firestore()
+    const unsubF  = firestore()
       .collection('users').doc(userId).collection('followers')
       .onSnapshot(snap => setFollowersCount(snap.size), e => console.log(e));
     const unsubFi = firestore()
@@ -78,18 +118,14 @@ const PublicProfileScreen = ({route, navigation}: any) => {
   const checkConnectionStatus = async () => {
     if (!currentUser) return;
     try {
-      // Check if connected
       const connected = await firestore()
         .collection('connections')
         .where('users', 'array-contains', currentUser.uid)
         .get();
-      const found = connected.docs.some(doc =>
-        doc.data().users?.includes(userId),
-      );
+      const found = connected.docs.some(doc => doc.data().users?.includes(userId));
       setIsConnected(found);
 
       if (!found) {
-        // Check if request already sent
         const sent = await firestore()
           .collection('connectionRequests')
           .where('fromUserId', '==', currentUser.uid)
@@ -124,22 +160,20 @@ const PublicProfileScreen = ({route, navigation}: any) => {
           .collection('following').doc(userId).set({
             userId, followedAt: firestore.FieldValue.serverTimestamp(),
           });
-         // Check if notification already exists
-const existingNotif = await firestore()
-  .collection('notifications')
-  .where('userId', '==', userId)
-  .where('senderId', '==', currentUser.uid)
-  .where('type', '==', 'new_follower')
-  .get();
-
-if (existingNotif.empty) {
-  await firestore().collection('notifications').add({
-    userId, type: 'new_follower', title: '🎉 New Follower!',
-    message: `${currentUserName} started following you`,
-    senderId: currentUser.uid, read: false,
-    createdAt: firestore.FieldValue.serverTimestamp(),
-  });
-}
+        const existingNotif = await firestore()
+          .collection('notifications')
+          .where('userId', '==', userId)
+          .where('senderId', '==', currentUser.uid)
+          .where('type', '==', 'new_follower')
+          .get();
+        if (existingNotif.empty) {
+          await firestore().collection('notifications').add({
+            userId, type: 'new_follower', title: '🎉 New Follower!',
+            message: `${currentUserName} started following you`,
+            senderId: currentUser.uid, read: false,
+            createdAt: firestore.FieldValue.serverTimestamp(),
+          });
+        }
         setIsFollowing(true);
       }
     } catch (e) {console.log(e);}
@@ -150,10 +184,10 @@ if (existingNotif.empty) {
   const sendConnectRequest = async () => {
     if (!currentUser || connectLoading) return;
     setConnectLoading(true);
-    setConnectRequestSent(true); // optimistic — show instantly
+    setConnectRequestSent(true);
     try {
       const currentUserName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
-      const otherUserName = cleanName(userData?.displayName || userData?.fullName || userData?.name || userData?.email);
+      const otherUserName   = cleanName(userData?.displayName || userData?.fullName || userData?.name || userData?.email);
 
       await firestore().collection('connectionRequests').add({
         fromUserId:    currentUser.uid,
@@ -176,40 +210,39 @@ if (existingNotif.empty) {
         createdAt:  firestore.FieldValue.serverTimestamp(),
       });
 
-      setConnectRequestSent(true);
-      Alert.alert('Request Sent! 🤝', `Connection request sent to ${otherUserName}`);
+      showToast();
     } catch (e: any) {
+      setConnectRequestSent(false);
       Alert.alert('Error', e?.message || 'Could not send request.');
     } finally {
       setConnectLoading(false);
     }
   };
 
-  // ── Start Chat (only if connected) ───────────────────────
+  // ── Start Chat ────────────────────────────────────────────
+  // Admin (by UID) can message anyone without needing a connection
   const startChat = async () => {
     if (!currentUser || isOwnProfile) return;
-    if (!isConnected) {
+    if (!isConnected && !isAdmin) {
       Alert.alert('Not Connected', 'Send a connect request first. Once they accept, you can message them.');
       return;
     }
     try {
-      const chatId = [currentUser.uid, userId].sort().join('_');
-      const chatRef = firestore().collection('chats').doc(chatId);
+      const chatId          = [currentUser.uid, userId].sort().join('_');
+      const chatRef         = firestore().collection('chats').doc(chatId);
       const currentUserName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
-      const otherUserName = cleanName(userData?.displayName || userData?.fullName || userData?.name || userData?.email);
+      const otherUserName   = cleanName(userData?.displayName || userData?.fullName || userData?.name || userData?.email);
 
-      // Use set with merge — avoids a get() call which would fail
-      // if the doc doesn't exist yet (permission-denied on non-existent doc)
       await chatRef.set({
         id: chatId,
-        participants: [currentUser.uid, userId],
-        participantNames: [currentUserName, otherUserName],
+        participants:      [currentUser.uid, userId],
+        participantNames:  [currentUserName, otherUserName],
         participantEmails: [currentUser.email || '', userData?.email || ''],
         lastMessage: '',
         lastMessageTime: null,
         updatedAt: firestore.FieldValue.serverTimestamp(),
       }, {merge: true});
-      // createdAt only on first write
+
       const chatDoc = await chatRef.get();
       if (!chatDoc.data()?.createdAt) {
         await chatRef.update({createdAt: firestore.FieldValue.serverTimestamp()});
@@ -218,9 +251,9 @@ if (existingNotif.empty) {
       navigation.navigate('ChatScreen', {
         chat: {
           id: chatId,
-          participants: [currentUser.uid, userId],
+          participants:     [currentUser.uid, userId],
           participantNames: [currentUserName, otherUserName],
-          participantEmails: [currentUser.email || '', userData?.email || ''],
+          participantEmails:[currentUser.email || '', userData?.email || ''],
           lastMessage: '',
         },
       });
@@ -228,6 +261,23 @@ if (existingNotif.empty) {
       console.log('CHAT ERROR:', JSON.stringify(e));
       Alert.alert('Error', e?.message || 'Could not start chat. Try again.');
     }
+  };
+
+  // ── Image viewer helpers ──────────────────────────────────
+  const openViewer = (startIndex: number, images: {uri: string}[]) => {
+    setViewerImages(images);
+    setViewerIndex(startIndex);
+    setViewerVisible(true);
+  };
+
+  const buildViewerImages = (data: any): {uri: string}[] => {
+    const imgs: {uri: string}[] = [];
+    const avatar = data?.photoUrl || data?.photoURL;
+    if (avatar) imgs.push({uri: avatar});
+    if (Array.isArray(data?.portfolioPhotos)) {
+      data.portfolioPhotos.forEach((url: string) => { if (url) imgs.push({uri: url}); });
+    }
+    return imgs;
   };
 
   /* ── ADMIN: BAN USER ── */
@@ -286,11 +336,11 @@ if (existingNotif.empty) {
             try {
               const batch = firestore().batch();
               batch.delete(firestore().collection('users').doc(userId));
-              const auditions = await firestore().collection('auditions').where('directorId', '==', userId).get();
-              auditions.docs.forEach(doc => batch.delete(doc.ref));
+              const auditions    = await firestore().collection('auditions').where('directorId', '==', userId).get();
               const applications = await firestore().collection('applications').where('applicantId', '==', userId).get();
+              const films        = await firestore().collection('films').where('directorId', '==', userId).get();
+              auditions.docs.forEach(doc => batch.delete(doc.ref));
               applications.docs.forEach(doc => batch.delete(doc.ref));
-              const films = await firestore().collection('films').where('directorId', '==', userId).get();
               films.docs.forEach(doc => batch.delete(doc.ref));
               await batch.commit();
               Alert.alert('✅ Removed', `All data for "${displayName}" has been deleted.`);
@@ -307,7 +357,16 @@ if (existingNotif.empty) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#C9956C" />
+        <Animated.View style={[styles.skeletonAvatar, {opacity: skeletonOpacity}]} />
+        <View style={{marginTop: 20, width: '70%', gap: 12}}>
+          <Animated.View style={[styles.skeletonLine, {width: '60%', height: 20}, {opacity: skeletonOpacity}]} />
+          <Animated.View style={[styles.skeletonLine, {width: '40%', height: 14}, {opacity: skeletonOpacity}]} />
+          <Animated.View style={[styles.skeletonLine, {width: '80%', height: 14}, {opacity: skeletonOpacity}]} />
+        </View>
+        <View style={{flexDirection: 'row', gap: 16, marginTop: 24}}>
+          <Animated.View style={[styles.skeletonStatBox, {opacity: skeletonOpacity}]} />
+          <Animated.View style={[styles.skeletonStatBox, {opacity: skeletonOpacity}]} />
+        </View>
       </View>
     );
   }
@@ -323,219 +382,247 @@ if (existingNotif.empty) {
   const displayName = cleanName(userData?.displayName || userData?.fullName || userData?.name || userData?.email);
   const avatarUrl   = userData?.photoUrl || userData?.photoURL || null;
   const isVerified  = userData?.verificationStatus === 'verified';
+  const allImages   = buildViewerImages(userData);
+  // Portfolio images start at index 1 if there's an avatar, else 0
+  const portfolioOffset = avatarUrl ? 1 : 0;
+
+  // Admin can always message; others need connection
+  const canMessage = isConnected || isAdmin;
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <>
+      {toastVisible && (
+        <Animated.View style={[styles.toastBanner, {opacity: toastOpacity}]}>
+          <Text style={styles.toastText}>Request sent! ✅ You'll be notified when they accept</Text>
+        </Animated.View>
+      )}
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
 
-      <View style={styles.profileSection}>
+        <View style={styles.profileSection}>
 
-        {/* BANNED BANNER */}
-        {isBanned && (
-          <View style={styles.bannedBanner}>
-            <Text style={styles.bannedText}>🚫 This user is banned</Text>
+          {/* BANNED BANNER */}
+          {isBanned && (
+            <View style={styles.bannedBanner}>
+              <Text style={styles.bannedText}>🚫 This user is banned</Text>
+            </View>
+          )}
+
+          {/* AVATAR — tappable to open fullscreen */}
+          {avatarUrl ? (
+            <RippleIcon size={110} color="#C9956C" onPress={() => openViewer(0, allImages)}>
+              <Image source={{uri: avatarUrl}} style={styles.avatarImage} />
+            </RippleIcon>
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{displayName?.charAt(0)?.toUpperCase()}</Text>
+            </View>
+          )}
+
+          {/* VERIFIED BADGE */}
+          {isVerified && (
+            <View style={styles.verifiedBadge}>
+              <Text style={styles.verifiedText}>✅ Verified</Text>
+            </View>
+          )}
+
+          <Text style={styles.name}>{displayName}</Text>
+
+          <View style={styles.roleBadge}>
+            <Text style={styles.roleText}>🎭 {userData?.role || 'Creator'}</Text>
           </View>
-        )}
 
-        {/* AVATAR */}
-        {avatarUrl ? (
-          <Image source={{uri: avatarUrl}} style={styles.avatarImage} />
-        ) : (
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{displayName?.charAt(0)?.toUpperCase()}</Text>
-          </View>
-        )}
+          {userData?.bio
+            ? <Text style={styles.bio}>{userData.bio}</Text>
+            : <Text style={styles.bioEmpty}>No bio added yet</Text>}
 
-        {/* VERIFIED BADGE */}
-        {isVerified && (
-          <View style={styles.verifiedBadge}>
-            <Text style={styles.verifiedText}>✅ Verified</Text>
-          </View>
-        )}
-
-        <Text style={styles.name}>{displayName}</Text>
-
-        <View style={styles.roleBadge}>
-          <Text style={styles.roleText}>🎭 {userData?.role || 'Creator'}</Text>
-        </View>
-
-        {userData?.bio
-          ? <Text style={styles.bio}>{userData.bio}</Text>
-          : <Text style={styles.bioEmpty}>No bio added yet</Text>}
-
-        {/* STATS */}
-<View style={styles.statsContainer}>
-  <TouchableOpacity
-    style={styles.statBox}
-    onPress={() => navigation.navigate('Followers', {userId, displayName, tab: 'followers'})}>
-    <Text style={styles.statNumber}>{followersCount}</Text>
-    <Text style={styles.statLabel}>Followers</Text>
-  </TouchableOpacity>
-  <View style={styles.statDivider} />
-  <TouchableOpacity
-    style={styles.statBox}
-    onPress={() => navigation.navigate('Followers', {userId, displayName, tab: 'following'})}>
-    <Text style={styles.statNumber}>{followingCount}</Text>
-    <Text style={styles.statLabel}>Following</Text>
-  </TouchableOpacity>
-</View>
-
-        {/* ── ACTION BUTTONS ── */}
-        {!isOwnProfile && (
-          <View style={styles.actionRow}>
-
-            {/* FOLLOW BUTTON */}
+          {/* STATS */}
+          <View style={styles.statsContainer}>
             <TouchableOpacity
-              style={[styles.followButton, isFollowing && styles.followingButton]}
-              onPress={handleFollow}
-              disabled={followLoading}>
-              {followLoading
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={styles.followButtonText}>
-                    {isFollowing ? '✓ Following' : '+ Follow'}
-                  </Text>}
+              style={styles.statBox}
+              onPress={() => navigation.navigate('Followers', {userId, displayName, tab: 'followers'})}>
+              <Text style={styles.statNumber}>{followersCount}</Text>
+              <Text style={styles.statLabel}>Followers</Text>
             </TouchableOpacity>
-
-            {/* CONNECT / PENDING / MESSAGE BUTTON */}
-            {isConnected ? (
-              // ✅ Connected — chat unlocked
-              <TouchableOpacity style={styles.messageButton} onPress={startChat}>
-                <Text style={styles.messageButtonText}>💬 Message</Text>
-              </TouchableOpacity>
-            ) : connectRequestSent ? (
-              // ⏳ Request sent
-              <View style={[styles.messageButton, styles.pendingButton]}>
-                <Text style={[styles.messageButtonText, {color: '#A09080'}]}>⏳ Pending</Text>
-              </View>
-            ) : (
-              // 🤝 Not connected — show Connect
-              <TouchableOpacity
-                style={[styles.messageButton, styles.connectButton]}
-                onPress={sendConnectRequest}
-                disabled={connectLoading}>
-                {connectLoading
-                  ? <ActivityIndicator color="#C9956C" size="small" />
-                  : <Text style={styles.messageButtonText}>🤝 Connect</Text>}
-              </TouchableOpacity>
-            )}
+            <View style={styles.statDivider} />
+            <TouchableOpacity
+              style={styles.statBox}
+              onPress={() => navigation.navigate('Followers', {userId, displayName, tab: 'following'})}>
+              <Text style={styles.statNumber}>{followingCount}</Text>
+              <Text style={styles.statLabel}>Following</Text>
+            </TouchableOpacity>
           </View>
-        )}
 
-        {/* Connection status hint */}
-        {!isOwnProfile && !isConnected && !connectRequestSent && (
-          <Text style={styles.connectHint}>
-            Send a connect request to message this creator
-          </Text>
-        )}
-        {!isOwnProfile && connectRequestSent && !isConnected && (
-          <Text style={styles.connectHint}>
-            Waiting for {displayName} to accept your request
-          </Text>
-        )}
-        {!isOwnProfile && isConnected && (
-          <Text style={[styles.connectHint, {color: '#4ADE80'}]}>
-            ✅ You are connected with {displayName}
-          </Text>
-        )}
+          {/* ── ACTION BUTTONS ── */}
+          {!isOwnProfile && (
+            <View style={styles.actionRow}>
 
-        {isOwnProfile && (
-          <TouchableOpacity
-            style={styles.editProfileBtn}
-            onPress={() => navigation.navigate('Profile')}>
-            <Text style={styles.editProfileText}>✏️ Edit Profile</Text>
-          </TouchableOpacity>
-        )}
+              {/* FOLLOW BUTTON */}
+              <LiquidPress
+                style={[styles.followButton, isFollowing && styles.followingButton]}
+                onPress={handleFollow}
+                disabled={followLoading}>
+                {followLoading
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={styles.followButtonText}>
+                      {isFollowing ? '✓ Following' : '+ Follow'}
+                    </Text>}
+              </LiquidPress>
 
-        <View style={styles.collabBadge}>
-          <Text style={styles.collabText}>🎬 Open for Collaboration</Text>
-        </View>
-
-        {/* ADMIN ACTIONS */}
-        {isAdmin && !isOwnProfile && (
-          <View style={styles.adminSection}>
-            <Text style={styles.adminLabel}>🛡️ Admin Actions</Text>
-            <View style={styles.adminRow}>
-              <TouchableOpacity
-                style={[styles.banBtn, isBanned && styles.unbanBtn]}
-                onPress={handleBan}>
-                <Text style={styles.banBtnText}>
-                  {isBanned ? '✅ Unban User' : '🚫 Ban User'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.removeBtn} onPress={handleRemove}>
-                <Text style={styles.removeBtnText}>🗑️ Remove</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-      </View>
-
-      {/* PORTFOLIO PHOTOS */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Portfolio Photos</Text>
-        {userData?.portfolioPhotos?.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
-            {userData.portfolioPhotos.map((url: string, index: number) => (
-              <Image key={index} source={{uri: url}} style={styles.portfolioPhoto} />
-            ))}
-          </ScrollView>
-        ) : (
-          <Text style={styles.emptyText}>No portfolio photos added yet</Text>
-        )}
-      </View>
-
-      {/* INTRO VIDEO */}
-      {userData?.introVideoLink ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Intro Video</Text>
-          <TouchableOpacity
-            style={styles.linkCard}
-            onPress={() => Linking.openURL(userData.introVideoLink)}>
-            <Text style={styles.linkCardIcon}>🎥</Text>
-            <View style={styles.linkCardContent}>
-              <Text style={styles.linkCardTitle}>Watch Intro Reel</Text>
-              <Text style={styles.linkCardUrl} numberOfLines={1}>{userData.introVideoLink}</Text>
-            </View>
-            <Text style={styles.linkCardArrow}>→</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
-      {/* PREVIOUS WORKS */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Previous Works</Text>
-        {userData?.portfolio1 || userData?.portfolio2 || userData?.portfolio3 ? (
-          [userData.portfolio1, userData.portfolio2, userData.portfolio3]
-            .filter(Boolean)
-            .map((link: string, i: number) => (
-              <TouchableOpacity
-                key={i}
-                style={styles.linkCard}
-                onPress={() => Linking.openURL(link)}>
-                <Text style={styles.linkCardIcon}>🔗</Text>
-                <View style={styles.linkCardContent}>
-                  <Text style={styles.linkCardTitle}>Work {i + 1}</Text>
-                  <Text style={styles.linkCardUrl} numberOfLines={1}>{link}</Text>
+              {/* MESSAGE / CONNECT / PENDING */}
+              {canMessage ? (
+                <LiquidPress style={styles.messageButton} onPress={startChat}>
+                  <Text style={styles.messageButtonText}>💬 Message</Text>
+                </LiquidPress>
+              ) : connectRequestSent ? (
+                <View style={[styles.messageButton, styles.pendingButton]}>
+                  <Text style={[styles.messageButtonText, {color: '#A09080'}]}>⏳ Pending</Text>
                 </View>
-                <Text style={styles.linkCardArrow}>→</Text>
-              </TouchableOpacity>
-            ))
-        ) : (
-          <Text style={styles.emptyText}>No previous works added yet</Text>
-        )}
-      </View>
+              ) : (
+                <LiquidPress
+                  style={[styles.messageButton, styles.connectButton]}
+                  onPress={sendConnectRequest}
+                  disabled={connectLoading}>
+                  {connectLoading
+                    ? <ActivityIndicator color="#C9956C" size="small" />
+                    : <Text style={styles.messageButtonText}>🤝 Connect</Text>}
+                </LiquidPress>
+              )}
+            </View>
+          )}
 
-      {isOwnProfile && userData?.phone ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Contact</Text>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoIcon}>📱</Text>
-            <Text style={styles.infoText}>{userData.phone}</Text>
+          {/* Connection status hint */}
+          {!isOwnProfile && !canMessage && !connectRequestSent && (
+            <Text style={styles.connectHint}>
+              Send a connect request to message this creator
+            </Text>
+          )}
+          {!isOwnProfile && !isConnected && connectRequestSent && !isAdmin && (
+            <Text style={styles.connectHint}>
+              Waiting for {displayName} to accept your request
+            </Text>
+          )}
+          {!isOwnProfile && isConnected && (
+            <Text style={[styles.connectHint, {color: '#4ADE80'}]}>
+              ✅ You are connected with {displayName}
+            </Text>
+          )}
+
+          {isOwnProfile && (
+            <TouchableOpacity
+              style={styles.editProfileBtn}
+              onPress={() => navigation.navigate('Profile')}>
+              <Text style={styles.editProfileText}>✏️ Edit Profile</Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={styles.collabBadge}>
+            <Text style={styles.collabText}>🎬 Open for Collaboration</Text>
           </View>
-        </View>
-      ) : null}
 
-      <View style={{height: 40}} />
-    </ScrollView>
+          {/* ADMIN ACTIONS */}
+          {isAdmin && !isOwnProfile && (
+            <View style={styles.adminSection}>
+              <Text style={styles.adminLabel}>🛡️ Admin Actions</Text>
+              <View style={styles.adminRow}>
+                <TouchableOpacity
+                  style={[styles.banBtn, isBanned && styles.unbanBtn]}
+                  onPress={handleBan}>
+                  <Text style={styles.banBtnText}>
+                    {isBanned ? '✅ Unban User' : '🚫 Ban User'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.removeBtn} onPress={handleRemove}>
+                  <Text style={styles.removeBtnText}>🗑️ Remove</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* PORTFOLIO PHOTOS */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Portfolio Photos</Text>
+          {userData?.portfolioPhotos?.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
+              {(userData.portfolioPhotos as string[]).map((url: string, index: number) => (
+                <TouchableOpacity
+                  key={index}
+                  activeOpacity={0.85}
+                  onPress={() => openViewer(portfolioOffset + index, allImages)}>
+                  <Image source={{uri: url}} style={styles.portfolioPhoto} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <Text style={styles.emptyText}>No portfolio photos added yet</Text>
+          )}
+        </View>
+
+        {/* INTRO VIDEO */}
+        {userData?.introVideoLink ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Intro Video</Text>
+            <TouchableOpacity
+              style={styles.linkCard}
+              onPress={() => Linking.openURL(userData.introVideoLink)}>
+              <Text style={styles.linkCardIcon}>🎥</Text>
+              <View style={styles.linkCardContent}>
+                <Text style={styles.linkCardTitle}>Watch Intro Reel</Text>
+                <Text style={styles.linkCardUrl} numberOfLines={1}>{userData.introVideoLink}</Text>
+              </View>
+              <Text style={styles.linkCardArrow}>→</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* PREVIOUS WORKS */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Previous Works</Text>
+          {userData?.portfolio1 || userData?.portfolio2 || userData?.portfolio3 ? (
+            [userData.portfolio1, userData.portfolio2, userData.portfolio3]
+              .filter(Boolean)
+              .map((link: string, i: number) => (
+                <TouchableOpacity
+                  key={i}
+                  style={styles.linkCard}
+                  onPress={() => Linking.openURL(link)}>
+                  <Text style={styles.linkCardIcon}>🔗</Text>
+                  <View style={styles.linkCardContent}>
+                    <Text style={styles.linkCardTitle}>Work {i + 1}</Text>
+                    <Text style={styles.linkCardUrl} numberOfLines={1}>{link}</Text>
+                  </View>
+                  <Text style={styles.linkCardArrow}>→</Text>
+                </TouchableOpacity>
+              ))
+          ) : (
+            <Text style={styles.emptyText}>No previous works added yet</Text>
+          )}
+        </View>
+
+        {isOwnProfile && userData?.phone ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Contact</Text>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoIcon}>📱</Text>
+              <Text style={styles.infoText}>{userData.phone}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        <View style={{height: 40}} />
+      </ScrollView>
+
+      {/* FULLSCREEN IMAGE VIEWER */}
+      <ImageViewing
+        images={viewerImages}
+        imageIndex={viewerIndex}
+        visible={viewerVisible}
+        onRequestClose={() => setViewerVisible(false)}
+        swipeToCloseEnabled
+        doubleTapToZoomEnabled
+        backgroundColor="black"
+      />
+    </>
   );
 };
 
@@ -546,7 +633,7 @@ const styles = StyleSheet.create({
   loadingContainer: {flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center'},
   errorText:        {color: '#A09080', fontSize: 16},
 
-  profileSection: {alignItems: 'center', paddingTop: 40, paddingBottom: 30, paddingHorizontal: 20},
+  profileSection: {alignItems: 'center', paddingTop: 60, paddingBottom: 30, paddingHorizontal: 20},
 
   bannedBanner: {
     backgroundColor: '#450A0A', borderRadius: 10,
@@ -558,11 +645,13 @@ const styles = StyleSheet.create({
 
   avatar: {
     width: 110, height: 110, borderRadius: 55,
-    backgroundColor: '#C9956C',
+    backgroundColor: '#1A1A1A',
     justifyContent: 'center', alignItems: 'center',
-    marginBottom: 16, borderWidth: 3, borderColor: '#FF8C5A',
+    marginBottom: 16, borderWidth: 2.5, borderColor: '#C9956C',
+    shadowColor: '#C9956C', shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.25, shadowRadius: 8, elevation: 6,
   },
-  avatarImage: {width: 110, height: 110, borderRadius: 55, marginBottom: 16, borderWidth: 3, borderColor: '#C9956C'},
+  avatarImage: {width: 110, height: 110, borderRadius: 55, marginBottom: 16, borderWidth: 2.5, borderColor: '#C9956C', shadowColor: '#C9956C', shadowOffset: {width: 0, height: 0}, shadowOpacity: 0.25, shadowRadius: 8, elevation: 6},
   avatarText:  {color: '#FFFFFF', fontSize: 44, fontWeight: 'bold'},
 
   verifiedBadge: {backgroundColor: '#064E3B', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, marginBottom: 10, borderWidth: 1, borderColor: '#6EE7B7'},
@@ -576,22 +665,21 @@ const styles = StyleSheet.create({
   bio:      {color: '#A09080', fontSize: 15, textAlign: 'center', paddingHorizontal: 20, marginBottom: 24, lineHeight: 22},
   bioEmpty: {color: '#A09080', fontSize: 14, textAlign: 'center', marginBottom: 24, fontStyle: 'italic'},
 
-  statsContainer: {flexDirection: 'row', alignItems: 'center', marginBottom: 24, backgroundColor: '#1C1C1C', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 40, borderWidth: 1, borderColor: '#2A2A2A'},
+  statsContainer: {flexDirection: 'row', alignItems: 'center', marginBottom: 24, backgroundColor: '#141414', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 40, borderTopWidth: 2, borderTopColor: '#C9956C44', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 8}, shadowOpacity: 0.6, shadowRadius: 24, elevation: 8},
   statBox:        {alignItems: 'center', paddingHorizontal: 20},
   statDivider:    {width: 1, height: 40, backgroundColor: '#2A2A2A'},
   statNumber:     {color: '#FFFFFF', fontSize: 28, fontWeight: 'bold'},
   statLabel:      {color: '#A09080', fontSize: 13, marginTop: 4},
 
-  // ── Action Buttons ──────────────────────────────────────────
-  actionRow:    {flexDirection: 'row', gap: 12, marginBottom: 8},
-  followButton: {backgroundColor: '#C9956C', paddingVertical: 12, paddingHorizontal: 28, borderRadius: 25, minWidth: 120, alignItems: 'center'},
-  followingButton: {backgroundColor: '#2A2A2A', borderWidth: 1, borderColor: '#C9956C'},
+  actionRow:        {flexDirection: 'row', gap: 12, marginBottom: 8},
+  followButton:     {backgroundColor: '#C9956C', paddingVertical: 12, paddingHorizontal: 28, borderRadius: 25, minWidth: 120, alignItems: 'center', borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', borderLeftWidth: 0, borderRightWidth: 0, shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
+  followingButton:  {backgroundColor: '#2A2A2A', borderWidth: 1, borderColor: '#C9956C'},
   followButtonText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
 
-  messageButton: {backgroundColor: '#1C1C1C', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 25, borderWidth: 1, borderColor: '#C9956C', alignItems: 'center', minWidth: 120},
+  messageButton:     {backgroundColor: 'rgba(201,149,108,0.08)', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 25, borderWidth: 0.5, borderColor: 'rgba(201,149,108,0.3)', alignItems: 'center', minWidth: 120, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4},
   messageButtonText: {color: '#C9956C', fontWeight: 'bold', fontSize: 15},
-  pendingButton: {borderColor: '#4B4B4B', opacity: 0.7},
-  connectButton: {backgroundColor: 'rgba(201,149,108,0.12)'},
+  pendingButton:     {borderColor: '#4B4B4B', opacity: 0.7},
+  connectButton:     {backgroundColor: 'rgba(201,149,108,0.08)', borderWidth: 0.5, borderColor: 'rgba(201,149,108,0.3)', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4},
 
   connectHint: {color: '#A09080', fontSize: 12, textAlign: 'center', marginBottom: 12, marginTop: 4},
 
@@ -601,7 +689,6 @@ const styles = StyleSheet.create({
   collabBadge: {backgroundColor: '#064E3B', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#4ADE80', marginTop: 8},
   collabText:  {color: '#4ADE80', fontWeight: '600', fontSize: 13},
 
-  // ── Admin ───────────────────────────────────────────────────
   adminSection: {marginTop: 20, width: '100%'},
   adminLabel:   {color: '#C9956C', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10, textAlign: 'center'},
   adminRow:     {flexDirection: 'row', gap: 10},
@@ -611,21 +698,31 @@ const styles = StyleSheet.create({
   removeBtn:    {flex: 1, backgroundColor: '#2A2A2A', borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#333333'},
   removeBtnText:{color: '#A09080', fontSize: 13, fontWeight: 'bold'},
 
-  // ── Sections ────────────────────────────────────────────────
-  section:      {paddingHorizontal: 20, marginBottom: 28},
-  sectionTitle: {color: '#C9956C', fontSize: 16, fontWeight: 'bold', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5},
-  emptyText:    {color: '#A09080', fontSize: 14, fontStyle: 'italic'},
-  photoScroll:  {flexDirection: 'row'},
+  section:        {paddingHorizontal: 20, marginBottom: 28},
+  sectionTitle:   {color: '#C9956C', fontSize: 16, fontWeight: 'bold', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5},
+  emptyText:      {color: '#A09080', fontSize: 14, fontStyle: 'italic'},
+  photoScroll:    {flexDirection: 'row'},
   portfolioPhoto: {width: 110, height: 110, borderRadius: 12, marginRight: 10},
 
-  linkCard:        {backgroundColor: '#1C1C1C', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: '#2A2A2A'},
+  linkCard:        {backgroundColor: '#141414', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderTopWidth: 2, borderTopColor: '#C9956C44', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 8}, shadowOpacity: 0.6, shadowRadius: 24, elevation: 8},
   linkCardIcon:    {fontSize: 24, marginRight: 12},
   linkCardContent: {flex: 1},
   linkCardTitle:   {color: '#FFFFFF', fontSize: 14, fontWeight: '600', marginBottom: 2},
   linkCardUrl:     {color: '#A09080', fontSize: 12},
   linkCardArrow:   {color: '#C9956C', fontSize: 18, fontWeight: 'bold', marginLeft: 8},
 
-  infoRow:  {flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#1C1C1C', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#2A2A2A'},
+  infoRow:  {flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#141414', borderRadius: 12, padding: 14, borderTopWidth: 2, borderTopColor: '#C9956C44', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8},
   infoIcon: {fontSize: 20},
   infoText: {color: '#FFFFFF', fontSize: 15},
+
+  skeletonAvatar:  {width: 110, height: 110, borderRadius: 55, backgroundColor: '#1C1C1C'},
+  skeletonLine:    {backgroundColor: '#1C1C1C', borderRadius: 8},
+  skeletonStatBox: {width: 80, height: 60, backgroundColor: '#1C1C1C', borderRadius: 12},
+
+  toastBanner: {
+    position: 'absolute', top: 60, left: 20, right: 20,
+    backgroundColor: '#064E3B', borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: '#4ADE80', zIndex: 100,
+  },
+  toastText: {color: '#FFFFFF', fontSize: 13, fontWeight: '600', textAlign: 'center'},
 });

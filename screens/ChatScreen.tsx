@@ -4,6 +4,7 @@ import {
   TouchableOpacity, KeyboardAvoidingView, Platform,
   Image, ActivityIndicator, StatusBar, Linking, Alert,
 } from 'react-native';
+import {LiquidPress} from '../components/LiquidPress';
 import Clipboard from '@react-native-clipboard/clipboard';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
@@ -26,9 +27,10 @@ export default function ChatScreen({route, navigation}: any) {
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
 
-  const otherUserId = chat.participants?.find(
-    (id: string) => id !== currentUser?.uid,
-  );
+  const otherUserId: string | undefined =
+    chat.participants?.find((id: string) => id !== currentUser?.uid) ||
+    chat.id?.split('_').find((id: string) => id !== currentUser?.uid);
+
 
   const initialHeaderName = (() => {
     const participants: string[] = chat.participants || [];
@@ -54,7 +56,7 @@ export default function ChatScreen({route, navigation}: any) {
   // ── Reply state ──────────────────────────────────────────────
   const [replyTo, setReplyTo] = useState<any>(null);
 
-  let typingTimeout: any;
+  const typingTimeout = useRef<any>(null);
 
   useEffect(() => {
     const unsubscribe = firestore()
@@ -109,7 +111,7 @@ export default function ChatScreen({route, navigation}: any) {
         if (!data) return;
         const photo = data.photoUrl || data.photoURL || null;
         setOtherUserPhoto(photo);
-        const freshName = data.fullName || data.displayName || data.name;
+        const freshName = data.fullName || data.displayName || data.name || data.email;
         if (freshName) setOtherUserName(cleanName(freshName));
         const lastSeen = data.lastSeen?.toDate?.();
         const isOnlineFlag = data.isOnline || false;
@@ -150,8 +152,8 @@ export default function ChatScreen({route, navigation}: any) {
       await firestore().collection('chats').doc(chat.id)
         .update({typingUser: currentUser?.uid});
     } catch (e) {console.log(e);}
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(async () => {
+    clearTimeout(typingTimeout.current);
+    typingTimeout.current = setTimeout(async () => {
       try {
         await firestore().collection('chats').doc(chat.id)
           .update({typingUser: null});
@@ -468,7 +470,13 @@ const unsendMessage = async (messageId: string) => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => otherUserId && navigation.navigate('PublicProfile', {userId: otherUserId})}
+          onPress={() => {
+            if (otherUserId) {
+              navigation.navigate('PublicProfile', {userId: otherUserId});
+            } else {
+              Alert.alert('Profile unavailable', 'Could not open profile — user data missing.');
+            }
+          }}
           style={styles.profileCircle}>
           {otherUserPhoto ? (
             <Image source={{uri: otherUserPhoto}} style={styles.headerPhoto} />
@@ -481,7 +489,13 @@ const unsendMessage = async (messageId: string) => {
 
         <TouchableOpacity
           style={styles.headerInfo}
-          onPress={() => otherUserId && navigation.navigate('PublicProfile', {userId: otherUserId})}>
+          onPress={() => {
+            if (otherUserId) {
+              navigation.navigate('PublicProfile', {userId: otherUserId});
+            } else {
+              Alert.alert('Profile unavailable', 'Could not open profile — user data missing.');
+            }
+          }}>
           <Text style={styles.headerName}>{otherUserName}</Text>
           <Text style={[
             styles.headerStatus,
@@ -583,12 +597,12 @@ const unsendMessage = async (messageId: string) => {
             <Text style={styles.attachIcon}>📎</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
+          <LiquidPress
             style={[styles.sendButton, !newMessage.trim() && styles.sendButtonDisabled]}
             onPress={sendMessage}
             disabled={!newMessage.trim()}>
             <Text style={styles.sendIcon}>➤</Text>
-          </TouchableOpacity>
+          </LiquidPress>
         </View>
 
       </KeyboardAvoidingView>
@@ -600,10 +614,12 @@ const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#0A0A0A'},
   flex: {flex: 1},
   header: {
-    backgroundColor: '#1C1C1C',
+    backgroundColor: '#141414',
     paddingHorizontal: 12, paddingBottom: 12,
     flexDirection: 'row', alignItems: 'center',
-    borderBottomWidth: 1, borderBottomColor: '#2A2A2A', elevation: 4,
+    borderBottomWidth: 3, borderBottomColor: '#C9956C22',
+    shadowColor: '#000', shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.5, shadowRadius: 12, elevation: 10,
   },
   backWrapper: {marginRight: 8},
   backButton: {color: '#C9956C', fontWeight: 'bold', fontSize: 26},
@@ -635,7 +651,7 @@ const styles = StyleSheet.create({
   msgAvatarText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 12},
   bubble: {maxWidth: '75%', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18},
   myBubble: {backgroundColor: '#C9956C'},
-  otherBubble: {backgroundColor: '#1E2E42'},
+  otherBubble: {backgroundColor: '#1A1A1A'},
   myBubbleFirst: {borderTopRightRadius: 4},
   otherBubbleFirst: {borderTopLeftRadius: 4},
   myBubbleLast: {borderBottomRightRadius: 4},
@@ -651,22 +667,24 @@ const styles = StyleSheet.create({
   chatImage: {width: 200, height: 260, borderRadius: 12},
   dateSeparator: {alignItems: 'center', marginVertical: 12},
   dateText: {
-    backgroundColor: '#1C1C1C', color: '#A09080',
+    backgroundColor: '#141414', color: '#A09080',
     paddingHorizontal: 12, paddingVertical: 4,
     borderRadius: 10, fontSize: 11,
+    borderWidth: 1, borderColor: '#2A2A2A',
   },
   typingContainer: {paddingHorizontal: 48, paddingBottom: 6},
   typingBubble: {
-    backgroundColor: '#1E2E42',
+    backgroundColor: '#1A1A1A',
     borderRadius: 18, borderBottomLeftRadius: 4,
     paddingHorizontal: 14, paddingVertical: 10,
     alignSelf: 'flex-start',
+    borderWidth: 0.5, borderColor: '#1E1E1E',
   },
   typingDots: {color: '#A09080', fontSize: 10, letterSpacing: 3},
   emojiRow: {
     flexDirection: 'row', flexWrap: 'wrap',
-    backgroundColor: '#1C1C1C', padding: 8,
-    borderTopWidth: 1, borderTopColor: '#2A2A2A',
+    backgroundColor: '#141414', padding: 8,
+    borderTopWidth: 2, borderTopColor: '#C9956C44',
   },
   emojiItemWrapper: {width: '12.5%', alignItems: 'center', paddingVertical: 6},
   emojiItem: {fontSize: 26},
@@ -674,8 +692,8 @@ const styles = StyleSheet.create({
   // ── Reply banner (above input) ───────────────────────────────
   replyBanner: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#1C1C1C',
-    borderTopWidth: 1, borderTopColor: '#2A2A2A',
+    backgroundColor: '#141414',
+    borderTopWidth: 2, borderTopColor: '#C9956C44',
     borderLeftWidth: 3, borderLeftColor: '#C9956C',
     paddingHorizontal: 12, paddingVertical: 8,
   },
@@ -704,22 +722,27 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 8, paddingVertical: 8,
-    backgroundColor: '#1C1C1C',
-    borderTopWidth: 1, borderTopColor: '#2A2A2A', gap: 6,
+    backgroundColor: '#141414',
+    borderTopWidth: 2, borderTopColor: '#C9956C44', gap: 6,
   },
   iconBtn: {padding: 6},
   emojiButton: {fontSize: 24},
   attachIcon: {fontSize: 22},
   input: {
-    flex: 1, backgroundColor: '#2A2A2A',
+    flex: 1, backgroundColor: '#060606',
     color: '#FFFFFF', borderRadius: 22,
     paddingHorizontal: 16, paddingVertical: 10,
     fontSize: 15, maxHeight: 120,
+    borderWidth: 1, borderColor: '#1A1A1A', elevation: 0,
   },
   sendButton: {
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: '#C9956C',
     justifyContent: 'center', alignItems: 'center',
+    borderTopWidth: 2, borderTopColor: '#E8C4A0',
+    borderBottomWidth: 2, borderBottomColor: '#7A5535',
+    shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.35, shadowRadius: 12, elevation: 8,
   },
   sendButtonDisabled: {opacity: 0.4},
   sendIcon: {color: '#FFFFFF', fontSize: 18, fontWeight: 'bold'},

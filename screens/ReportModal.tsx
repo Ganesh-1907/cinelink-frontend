@@ -141,7 +141,7 @@ export default function ReportModal({
           <TextInput
             style={styles.detailsInput}
             placeholder="Add more details (optional)..."
-            placeholderTextColor="#475569"
+            placeholderTextColor="#A09080"
             value={details}
             onChangeText={setDetails}
             multiline
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   container: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#1C1C1C',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
@@ -191,27 +191,27 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   closeBtn: {
-    color: '#64748B',
+    color: '#A09080',
     fontSize: 22,
     padding: 4,
   },
   reportingLabel: {
-    color: '#64748B',
+    color: '#A09080',
     fontSize: 13,
     marginBottom: 16,
   },
   reportingTitle: {
-    color: '#94A3B8',
+    color: '#FFFFFF',
     fontWeight: '600',
   },
   sectionTitle: {
-    color: '#CBD5E1',
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 12,
   },
   reasonBtn: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 14,
     marginBottom: 8,
@@ -219,14 +219,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#2A2A2A',
   },
   reasonBtnActive: {
     borderColor: '#EF4444',
     backgroundColor: 'rgba(239,68,68,0.1)',
   },
   reasonText: {
-    color: '#94A3B8',
+    color: '#A09080',
     fontSize: 14,
     fontWeight: '500',
   },
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   detailsInput: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 14,
     color: '#fff',
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#2A2A2A',
   },
   submitBtn: {
     backgroundColor: '#DC2626',

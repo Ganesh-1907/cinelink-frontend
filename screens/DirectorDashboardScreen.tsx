@@ -43,9 +43,10 @@ export default function DirectorDashboardScreen({navigation}: any) {
       const snapshot = await firestore()
         .collection('auditions')
         .where('directorId', '==', user?.uid)
-        .orderBy('createdAt', 'desc')
         .get();
-      setMyAuditions(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
+      const items = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+      items.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setMyAuditions(items);
     } catch (e) {
       console.log('LOAD MY AUDITIONS ERROR:', e);
     }
@@ -57,9 +58,9 @@ export default function DirectorDashboardScreen({navigation}: any) {
       const snapshot = await firestore()
         .collection('applications')
         .where('directorId', '==', user?.uid)
-        .orderBy('appliedAt', 'desc')
         .get();
       const apps = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+      apps.sort((a: any, b: any) => (b.appliedAt?.seconds || 0) - (a.appliedAt?.seconds || 0));
       setApplications(apps);
       const auditionIds = [...new Set(apps.map((app: any) => app.auditionId))];
       const auditionDocs = await Promise.all(
@@ -179,30 +180,33 @@ export default function DirectorDashboardScreen({navigation}: any) {
   };
 
   /* ── START CHAT ── */
-  const startChat = async (app: any) => {
-    try {
-      const chatId = [user?.uid, app.applicantId].sort().join('_');
-      const chatRef = firestore().collection('chats').doc(chatId);
-      const chatDoc = await chatRef.get();
-      const directorName = user?.displayName || cleanName(user?.email) || 'Director';
-      const applicantName = app.applicantName || cleanName(app.applicantEmail) || 'Applicant';
-      if (!chatDoc.exists) {
-        await chatRef.set({
-          participants: [user?.uid, app.applicantId],
-          participantNames: [directorName, applicantName],
-          participantEmails: [user?.email, app.applicantEmail],
-          lastMessage: '',
-          createdAt: firestore.FieldValue.serverTimestamp(),
-          updatedAt: firestore.FieldValue.serverTimestamp(),
-        });
-      }
-      navigation.navigate('ChatScreen', {
-        chat: {id: chatId, participantNames: [directorName, applicantName]},
-      });
-    } catch (e) {
-      Alert.alert('Error', 'Could not start chat');
-    }
-  };
+   const startChat = async (app: any) => {
+  try {
+    const chatId = [user?.uid, app.applicantId].sort().join('_');
+
+    const myDoc = await firestore().collection('users').doc(user?.uid).get();
+    const myData = myDoc.data();
+    const directorName = myData?.fullName || myData?.displayName || myData?.name
+      || user?.displayName || cleanName(user?.email) || 'Director';
+
+    const applicantName = app.applicantName || cleanName(app.applicantEmail) || 'Applicant';
+
+    await firestore().collection('chats').doc(chatId).set({
+      participants: [user?.uid, app.applicantId],
+      participantNames: [directorName, applicantName],
+      participantEmails: [user?.email, app.applicantEmail],
+      lastMessage: '',
+      updatedAt: firestore.FieldValue.serverTimestamp(),
+    }, {merge: true});
+
+    navigation.navigate('ChatScreen', {
+      chat: {id: chatId, participantNames: [directorName, applicantName]},
+    });
+  } catch (e) {
+    console.log('CHAT ERROR:', e);
+    Alert.alert('Error', 'Could not start chat');
+  }
+};
 
   const renderApplicationCard = (app: any) => {
     const isProcessing = processingAppId === app.id;

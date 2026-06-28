@@ -7,7 +7,7 @@ import {launchImageLibrary} from 'react-native-image-picker';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 
-const GEMINI_API_KEY = 'AIzaSyDGlDTjjUg_x5rtdN98nTqYnKY_DILnvFA';
+const GEMINI_API_KEY = 'AIzaSyAIAb0bUWvHZHR1YE6_pVKI45JQJ5owA4g';
 const GEMINI_VISION_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
 
 type AuditionForm = {

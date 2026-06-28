@@ -4,6 +4,7 @@ import {
   Dimensions, FlatList, StatusBar, Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {LiquidPress} from '../components/LiquidPress';
 
 const {width, height} = Dimensions.get('window');
 
@@ -152,13 +153,13 @@ export default function OnboardingScreen({onDone}: OnboardingProps) {
       <View style={styles.bottomSection}>
         {renderDots()}
 
-        <TouchableOpacity
+        <LiquidPress
           style={[styles.nextBtn, isLastSlide && styles.nextBtnLast]}
           onPress={goNext}>
           <Text style={styles.nextBtnText}>
             {isLastSlide ? '🚀 Get Started' : 'Next →'}
           </Text>
-        </TouchableOpacity>
+        </LiquidPress>
 
         {isLastSlide && (
           <Text style={styles.termsText}>

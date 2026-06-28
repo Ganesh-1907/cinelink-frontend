@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import {getDaysLeft} from '../utils/contestUtils';
 
 const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
 
@@ -196,14 +197,9 @@ export default function ContestDetailScreen({route, navigation}: any) {
       const userRef  = firestore().collection('users').doc(user.uid);
 
       await firestore().runTransaction(async tx => {
-        const entrySnap = await tx.get(entryRef);
-        const userSnap  = await tx.get(userRef);
+  const entrySnap = await tx.get(entryRef);
 
-        if (!entrySnap.exists) throw new Error('Entry not found.');
-
-        // Double-vote guard inside transaction
-        const alreadyVoted: string[] = userSnap.data()?.votedEntries || [];
-        if (alreadyVoted.includes(entryId)) throw new Error('already_voted');
+  if (!entrySnap.exists) throw new Error('Entry not found.');
 
         const currentVotes   = entrySnap.data()?.votes      || 0;
         const currentJury    = entrySnap.data()?.juryScore   || 0;
@@ -295,33 +291,6 @@ export default function ContestDetailScreen({route, navigation}: any) {
     );
   };
 
-  const parseDeadline = (deadline: any): Date | null => {
-    if (!deadline) return null;
-    // Firestore Timestamp
-    if (typeof deadline?.toDate === 'function') return deadline.toDate();
-    if (typeof deadline !== 'string') return null;
-    const s = deadline.trim();
-    // YYYY-MM-DD → end of that day
-    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) {
-      const [y, m, d] = s.split('-').map(Number);
-      return new Date(y, m - 1, d, 23, 59, 59);
-    }
-    // DD-MM-YYYY or DD/MM/YYYY
-    const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-    if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), 23, 59, 59);
-    // Anything else JS can parse (e.g. "30 July 2026")
-    const parsed = new Date(s);
-    return isNaN(parsed.getTime()) ? null : parsed;
-  };
-
-  const getDaysLeft = (deadline: any) => {
-    const end = parseDeadline(deadline);
-    if (!end) return 'Open';
-    const diff = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    if (diff < 0) return 'Contest Ended';
-    if (diff === 0) return '🔥 Last Day!';
-    return `${diff} days left`;
-  };
   if (!contest) {
     return (
       <SafeAreaView style={styles.container}>

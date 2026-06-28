@@ -12,16 +12,23 @@ import {
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 
+const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+
 export default function MyContestsScreen({navigation}: any) {
   const [contests, setContests] = useState<any[]>([]);
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('My Entries');
   const user = auth().currentUser;
+  const isAdmin = user?.email === ADMIN_EMAIL;
 
   useEffect(() => {
-    loadMyEntries();
-    loadMyContests();
+    const unsubEntries = loadMyEntries();
+    const unsubContests = loadMyContests();
+    return () => {
+      unsubEntries();
+      unsubContests();
+    };
   }, []);
 
   const loadMyEntries = () => {
@@ -191,18 +198,22 @@ const loadMyContests = () => {
         ) : (
 
           /* ── MY CONTESTS ── */
-          contests.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyIcon}>🏆</Text>
-              <Text style={styles.emptyText}>No contests created!</Text>
-              <Text style={styles.emptySubText}>Create a contest to see it here.</Text>
+          <>
+            {isAdmin && (
               <TouchableOpacity
-                style={styles.browseBtn}
+                style={styles.createBtn}
                 onPress={() => navigation.navigate('PostContest')}>
-                <Text style={styles.browseBtnText}>+ Create Contest</Text>
+                <Text style={styles.createBtnText}>+ Create New Contest</Text>
               </TouchableOpacity>
-            </View>
-          ) : (
+            )}
+
+            {contests.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyIcon}>🏆</Text>
+                <Text style={styles.emptyText}>No contests created!</Text>
+                <Text style={styles.emptySubText}>Create a contest to see it here.</Text>
+              </View>
+            ) : (
             contests.map((item: any) => (
               <TouchableOpacity
                 key={item.id}
@@ -244,7 +255,8 @@ const loadMyContests = () => {
                 </View>
               </TouchableOpacity>
             ))
-          )
+            )}
+          </>
         )}
       </View>
     </ScrollView>
@@ -395,4 +407,13 @@ const styles = StyleSheet.create({
     borderColor: '#DC2626',
   },
   deleteBtnText: {color: '#FCA5A5', fontSize: 13, fontWeight: 'bold'},
+
+  createBtn: {
+    backgroundColor: '#C9956C',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  createBtnText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
 });

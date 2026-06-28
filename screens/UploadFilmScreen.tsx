@@ -154,17 +154,17 @@ export default function UploadFilmScreen({navigation}: any) {
 
           <Text style={styles.label}>Film Title *</Text>
           <TextInput style={styles.input} placeholder="e.g. Oka Chinna Katha"
-            placeholderTextColor="#64748B" value={title} onChangeText={setTitle} />
+            placeholderTextColor="#A09080" value={title} onChangeText={setTitle} />
 
           <Text style={styles.label}>Description *</Text>
           <TextInput style={[styles.input, styles.multiline]}
             placeholder="What is your film about? Cast, story, theme..."
-            placeholderTextColor="#64748B" value={description}
+            placeholderTextColor="#A09080" value={description}
             onChangeText={setDescription} multiline numberOfLines={4} />
 
           <Text style={styles.label}>Duration (minutes) *</Text>
           <TextInput style={styles.input} placeholder="e.g. 18"
-            placeholderTextColor="#64748B" value={duration}
+            placeholderTextColor="#A09080" value={duration}
             onChangeText={setDuration} keyboardType="numeric" />
 
           <Text style={styles.label}>Genre</Text>
@@ -200,7 +200,7 @@ export default function UploadFilmScreen({navigation}: any) {
             <View>
               <TextInput style={styles.input}
                 placeholder="Paste YouTube / Drive / Vimeo link"
-                placeholderTextColor="#64748B" value={videoLink}
+                placeholderTextColor="#A09080" value={videoLink}
                 onChangeText={setVideoLink} autoCapitalize="none" />
               <Text style={styles.hint}>Supported: YouTube, Google Drive, Vimeo, Instagram</Text>
             </View>
@@ -257,8 +257,8 @@ export default function UploadFilmScreen({navigation}: any) {
 }
 
 const styles = StyleSheet.create({
-  safe: {flex: 1, backgroundColor: '#081421'},
-  container: {flex: 1, backgroundColor: '#081421'},
+  safe: {flex: 1, backgroundColor: '#0A0A0A'},
+  container: {flex: 1, backgroundColor: '#0A0A0A'},
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 14,
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
   posterEmpty: {flex: 1, backgroundColor: '#1C1C1C', justifyContent: 'center', alignItems: 'center', gap: 6},
   posterIcon: {fontSize: 40},
   posterEmptyText: {color: '#A09080', fontSize: 14, fontWeight: '600'},
-  posterEmptySub: {color: '#64748B', fontSize: 12},
+  posterEmptySub: {color: '#A09080', fontSize: 12},
   overlay: {
     ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center', alignItems: 'center', gap: 8,
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     color: '#fff', fontSize: 15, borderWidth: 1, borderColor: '#2A2A2A',
   },
   multiline: {height: 100, textAlignVertical: 'top'},
-  hint: {color: '#64748B', fontSize: 12, marginTop: 6},
+  hint: {color: '#A09080', fontSize: 12, marginTop: 6},
   genreGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
   genreBtn: {
     backgroundColor: '#1C1C1C', borderRadius: 10,
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
   fileBoxDone: {borderColor: '#4ADE80', borderStyle: 'solid', backgroundColor: '#0D2818'},
   fileBoxIcon: {fontSize: 32},
   fileBoxText: {color: '#A09080', fontSize: 14, fontWeight: '600'},
-  fileBoxSub: {color: '#64748B', fontSize: 12},
+  fileBoxSub: {color: '#A09080', fontSize: 12},
   benefitsBox: {
     backgroundColor: '#1C1C1C', borderRadius: 12, padding: 16,
     marginTop: 22, borderWidth: 1, borderColor: '#2A2A2A',

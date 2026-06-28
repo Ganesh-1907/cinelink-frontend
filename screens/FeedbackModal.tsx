@@ -1,7 +1,7 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Animated,
+  TextInput, Alert, ActivityIndicator,
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
@@ -19,6 +19,14 @@ export default function FeedbackModal({visible, onClose}: FeedbackModalProps) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const user = auth().currentUser;
+
+  useEffect(() => {
+    if (!visible) {
+      setRating(0);
+      setMessage('');
+      setSubmitted(false);
+    }
+  }, [visible]);
 
   const handleSubmit = async () => {
     if (rating === 0) {

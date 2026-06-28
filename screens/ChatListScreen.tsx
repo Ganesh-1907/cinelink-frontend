@@ -54,11 +54,13 @@ export default function ChatListScreen({navigation}: any) {
 
   const loadUserData = async (chatList: any[]) => {
     // Only fetch users we haven't loaded yet
-    const newIds = chatList
-      .map(chat =>
-        (chat.participants as string[])?.find(id => id !== currentUser?.uid),
-      )
-      .filter((id): id is string => !!id && !userNames[id]);
+    const newIds = [...new Set(
+      chatList
+        .map(chat =>
+          (chat.participants as string[])?.find(id => id !== currentUser?.uid),
+        )
+        .filter((id): id is string => !!id),
+    )];
 
     if (newIds.length === 0) return;
 
@@ -71,9 +73,8 @@ export default function ChatListScreen({navigation}: any) {
       docs.forEach((doc, i) => {
         if (doc.exists) {
           const data = doc.data() as any;
-          names[newIds[i]] = cleanName(
-            data?.fullName || data?.displayName || data?.name || data?.email,
-          ) || 'User';
+          const resolved = cleanName(data?.fullName || data?.displayName || data?.name || data?.email);
+          if (resolved) names[newIds[i]] = resolved;
           const photo = data?.photoUrl || data?.photoURL || null;
           if (photo) photos[newIds[i]] = photo;
         }
@@ -160,11 +161,29 @@ const blockUser = async (otherId: string, otherName: string) => {
     const profilePhoto = otherId ? userPhotos[otherId] : null;
 
     const formatTime = (timestamp: any) => {
-      if (!timestamp?.toDate) return '';
-      const date = timestamp.toDate();
+      if (!timestamp) return '';
+      let date: Date;
+      if (typeof timestamp?.toDate === 'function') {
+        date = timestamp.toDate();
+      } else if (timestamp?.seconds) {
+        date = new Date(timestamp.seconds * 1000);
+      } else if (typeof timestamp === 'number') {
+        date = new Date(timestamp);
+      } else {
+        return 'Now';
+      }
       const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
       if (date.toDateString() === today.toDateString()) {
         return date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+      }
+      if (date.toDateString() === yesterday.toDateString()) {
+        return 'Yesterday';
+      }
+      const daysDiff = (today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysDiff < 7) {
+        return date.toLocaleDateString([], {weekday: 'long'});
       }
       return date.toLocaleDateString([], {day: '2-digit', month: 'short'});
     };
@@ -230,6 +249,11 @@ const blockUser = async (otherId: string, otherName: string) => {
       <Text style={styles.emptyEmoji}>💬</Text>
       <Text style={styles.emptyTitle}>No chats yet</Text>
       <Text style={styles.emptyText}>Start networking with creators on CineLink.</Text>
+      <TouchableOpacity
+        style={styles.emptyBtn}
+        onPress={() => navigation.navigate('Home')}>
+        <Text style={styles.emptyBtnText}>Find People to Connect</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -258,22 +282,41 @@ const styles = StyleSheet.create({
   headerSub: {color: '#A09080', marginTop: 2, fontSize: 13},
 
   chatCard: {
-    backgroundColor: '#1C1C1C',
+    backgroundColor: '#141414',
     borderRadius: 14,
     padding: 12,
     marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
+    borderTopWidth: 2,
+    borderTopColor: '#C9956C44',
     borderWidth: 1,
     borderColor: '#2A2A2A',
+    borderBottomWidth: 3,
+    borderBottomColor: '#C9956C22',
+    borderRightWidth: 2,
+    borderRightColor: '#1A1A1A',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 8},
+    shadowOpacity: 0.6,
+    shadowRadius: 24,
+    elevation: 8,
   },
 
   avatarWrapper: {position: 'relative', marginRight: 10},
-  avatarImage: {width: 46, height: 46, borderRadius: 23},
+  avatarImage: {
+    width: 46, height: 46, borderRadius: 23,
+    borderWidth: 2.5, borderColor: '#C9956C',
+    shadowColor: '#C9956C', shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.25, shadowRadius: 8, elevation: 6,
+  },
   avatar: {
     width: 46, height: 46, borderRadius: 23,
-    backgroundColor: '#C9956C',
+    backgroundColor: '#1A1A1A',
     justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2.5, borderColor: '#C9956C',
+    shadowColor: '#C9956C', shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.25, shadowRadius: 8, elevation: 6,
   },
   avatarText: {color: '#FFFFFF', fontSize: 18, fontWeight: 'bold'},
 
@@ -285,6 +328,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: 3,
     borderWidth: 2, borderColor: '#0A0A0A',
+    shadowColor: '#C9956C', shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.6, shadowRadius: 6, elevation: 4,
   },
   unreadBadgeText: {color: '#FFFFFF', fontSize: 10, fontWeight: 'bold'},
 
@@ -307,4 +352,12 @@ const styles = StyleSheet.create({
     color: '#A09080', marginTop: 10,
     textAlign: 'center', lineHeight: 22, paddingHorizontal: 40,
   },
+  emptyBtn: {
+    marginTop: 24, backgroundColor: '#C9956C', borderRadius: 25,
+    paddingVertical: 12, paddingHorizontal: 28,
+    borderTopWidth: 2, borderTopColor: '#E8C4A0',
+    borderBottomWidth: 2, borderBottomColor: '#7A5535',
+    elevation: 6,
+  },
+  emptyBtnText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
 });

@@ -14,6 +14,10 @@ import {
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import {LiquidPress} from '../components/LiquidPress';
+
+const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+const ADMIN_UID   = 'moVQIEK5RqhXUOf4wk1L7913kZZ2';
 
 const cleanName = (raw: string | null | undefined): string => {
   if (!raw) return 'User';
@@ -29,7 +33,11 @@ const extractPhoneNumber = (text: string): string | null => {
 };
 
 export default function AuditionDetailScreen({route, navigation}: any) {
-  const {audition} = route.params;
+  const paramAudition = route?.params?.audition;
+  const paramAuditionId = route?.params?.auditionId;
+
+  const [audition, setAudition] = useState<any>(paramAudition || null);
+  const [fetching, setFetching] = useState(!paramAudition && !!paramAuditionId);
   const [loading, setLoading] = useState(false);
   const [applied, setApplied] = useState(false);
   const [directorProfile, setDirectorProfile] = useState<any>(null);
@@ -42,21 +50,84 @@ export default function AuditionDetailScreen({route, navigation}: any) {
   const [commentText, setCommentText] = useState('');
   const [postingComment, setPostingComment] = useState(false);
 
+  // Applicants (visible to director/admin only)
+  const [applicants, setApplicants] = useState<any[]>([]);
+  const [myRole, setMyRole] = useState<string>('');
+
   const user = auth().currentUser;
   const currentUserName =
     user?.displayName || user?.email?.split('@')[0] || 'User';
-  const phoneNumber = extractPhoneNumber(audition.description || '');
+  const phoneNumber = extractPhoneNumber(audition?.description || '');
 
-useEffect(() => {
-  checkIfApplied();
-  loadDirectorProfile();
-  checkIfSaved();
-  notifyDirector();
-  const unsubscribe = loadComments();
-  return () => {
-    if (unsubscribe) unsubscribe();
+  const isOwner = !!audition?.directorId && audition.directorId === user?.uid;
+  const isAdmin = myRole === 'admin';
+  const canSeeApplicants = isOwner || isAdmin;
+
+  // ── Fetch audition by ID (when opened from a notification) ──
+  useEffect(() => {
+    if (!paramAudition && paramAuditionId) {
+      firestore()
+        .collection('auditions')
+        .doc(paramAuditionId)
+        .get()
+        .then(doc => {
+          if (doc.exists) setAudition({id: doc.id, ...doc.data()});
+          setFetching(false);
+        })
+        .catch(() => setFetching(false));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!audition?.id) return;
+    checkIfApplied();
+    loadDirectorProfile();
+    checkIfSaved();
+    notifyDirector();
+    const unsubscribe = loadComments();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [audition?.id]);
+
+  // ── Load my own role (to detect admin) ──
+  useEffect(() => {
+    if (!user?.uid) return;
+    firestore()
+      .collection('users')
+      .doc(user.uid)
+      .get()
+      .then(doc => setMyRole(doc.data()?.role || ''))
+      .catch(() => {});
+  }, []);
+
+  // ── Load applicants (director/admin only) ──
+  useEffect(() => {
+    if (!audition?.id || !user?.uid) return;
+    const own = audition.directorId === user.uid;
+    if (!own && myRole !== 'admin') return;
+    loadApplicants(own);
+  }, [audition?.id, myRole]);
+
+  /* ── LOAD APPLICANTS (no orderBy → no composite index needed) ── */
+  const loadApplicants = async (own: boolean) => {
+    try {
+      let query: any = firestore()
+        .collection('applications')
+        .where('auditionId', '==', audition.id);
+      if (own) query = query.where('directorId', '==', user?.uid);
+      const snap = await query.get();
+      const data = snap.docs.map((d: any) => ({id: d.id, ...d.data()}));
+      data.sort(
+        (a: any, b: any) =>
+          (b.appliedAt?.toDate?.()?.getTime() || 0) -
+          (a.appliedAt?.toDate?.()?.getTime() || 0),
+      );
+      setApplicants(data);
+    } catch (e) {
+      console.log('APPLICANTS ERROR:', e);
+    }
   };
-}, []);
 
   const checkIfApplied = async () => {
     try {
@@ -153,6 +224,7 @@ const loadComments = () => {
           title: '💬 New Comment!',
           message: `${currentUserName} commented on "${audition.title}"`,
           senderId: user?.uid,
+          auditionId: audition.id,
           read: false,
           createdAt: firestore.FieldValue.serverTimestamp(),
         });
@@ -214,6 +286,30 @@ const startChat = async () => {
     Alert.alert('Error', 'You cannot chat with yourself!');
     return;
   }
+
+  const isAdminUser = user?.uid === ADMIN_UID || user?.email === ADMIN_EMAIL;
+
+  if (!isAdminUser) {
+    try {
+      const connSnap = await firestore()
+        .collection('connections')
+        .where('users', 'array-contains', user?.uid)
+        .get();
+      const connected = connSnap.docs.some(doc =>
+        doc.data().users?.includes(audition.directorId),
+      );
+      if (!connected) {
+        Alert.alert(
+          'Not Connected',
+          'Connect with this director first to send a message.',
+        );
+        return;
+      }
+    } catch (e) {
+      console.log('CONNECTION CHECK ERROR:', e);
+    }
+  }
+
   try {
     const chatId = [user?.uid, audition.directorId].sort().join('_');
     const directorName =
@@ -302,6 +398,23 @@ const startChat = async () => {
     setLoading(false);
   };
 
+  // ── Early returns MUST come after all function definitions ──
+  if (fetching) {
+    return (
+      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0A0A0A'}}>
+        <ActivityIndicator size="large" color="#C9956C" />
+      </View>
+    );
+  }
+
+  if (!audition) {
+    return (
+      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0A0A0A'}}>
+        <Text style={{color: '#fff'}}>Audition not found</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
@@ -387,7 +500,11 @@ const startChat = async () => {
         {audition.description ? (
           <>
             <Text style={styles.sectionTitle}>About this Audition</Text>
-            <Text style={styles.description}>{audition.description}</Text>
+            <Text style={styles.description}>
+              {phoneNumber
+                ? audition.description.replace(phoneNumber, '').replace(/\s+/g, ' ').trim()
+                : audition.description}
+            </Text>
           </>
         ) : null}
 
@@ -489,7 +606,7 @@ const startChat = async () => {
 
         {/* ACTION BUTTONS */}
         <View style={styles.buttonRow}>
-          <TouchableOpacity
+          <LiquidPress
             style={[
               styles.applyBtn,
               {flex: phoneNumber ? 0.55 : 1},
@@ -504,10 +621,10 @@ const startChat = async () => {
                 {applied ? '✅ Applied' : showNoteInput ? '🚀 Submit' : 'Apply Now →'}
               </Text>
             )}
-          </TouchableOpacity>
+          </LiquidPress>
           {phoneNumber && (
             <TouchableOpacity style={styles.whatsappBtn} onPress={openWhatsApp}>
-              <Text style={styles.whatsappBtnText}>📱 WhatsApp</Text>
+              <Text style={styles.whatsappBtnText} numberOfLines={1}>📱 WhatsApp</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -516,6 +633,57 @@ const startChat = async () => {
           <TouchableOpacity style={styles.skipBtn} onPress={() => {setNote(''); applyNow();}}>
             <Text style={styles.skipBtnText}>Skip note & apply directly</Text>
           </TouchableOpacity>
+        )}
+
+        {/* ✅ APPLICATIONS SECTION — director/admin only */}
+        {canSeeApplicants && (
+          <View style={styles.applicantsSection}>
+            <Text style={styles.sectionTitle}>
+              📋 Applications ({applicants.length})
+            </Text>
+            {applicants.length === 0 ? (
+              <View style={styles.noComments}>
+                <Text style={styles.noCommentsText}>No applications yet.</Text>
+              </View>
+            ) : (
+              applicants.map((app: any) => (
+                <TouchableOpacity
+                  key={app.id}
+                  style={styles.applicantCard}
+                  activeOpacity={0.7}
+                  onPress={() =>
+                    navigation.navigate('PublicProfile', {
+                      userId: app.applicantId,
+                    })
+                  }>
+                  <View style={styles.commentAvatar}>
+                    <Text style={styles.commentAvatarText}>
+                      {(app.applicantName || app.applicantEmail || 'U')
+                        .charAt(0)
+                        .toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.applicantInfo}>
+                    <Text style={styles.applicantName}>
+                      {app.applicantName || cleanName(app.applicantEmail)}
+                    </Text>
+                    <Text style={styles.applicantMeta}>
+                      {formatTime(app.appliedAt)} · {app.status || 'Pending'}
+                    </Text>
+                    {app.note ? (
+                      <Text style={styles.applicantNote} numberOfLines={2}>
+                        "{app.note}"
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.applicantArrow}>›</Text>
+                </TouchableOpacity>
+              ))
+            )}
+            <Text style={styles.applicantHint}>
+              Tap an applicant to view their profile & portfolio
+            </Text>
+          </View>
         )}
 
         {/* ✅ COMMENTS SECTION */}
@@ -535,7 +703,7 @@ const startChat = async () => {
               multiline
               maxLength={200}
             />
-            <TouchableOpacity
+            <LiquidPress
               style={[styles.commentSendBtn, (!commentText.trim() || postingComment) && styles.commentSendBtnDisabled]}
               onPress={postComment}
               disabled={!commentText.trim() || postingComment}>
@@ -544,7 +712,7 @@ const startChat = async () => {
               ) : (
                 <Text style={styles.commentSendText}>Post</Text>
               )}
-            </TouchableOpacity>
+            </LiquidPress>
           </View>
 
           {/* COMMENTS LIST */}
@@ -612,15 +780,15 @@ const styles = StyleSheet.create({
   saveBtnText: {color: '#A09080', fontSize: 12, fontWeight: '600'},
   title: {color: '#FFFFFF', fontSize: 24, fontWeight: 'bold', marginBottom: 16},
   infoGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20},
-  infoCard: {backgroundColor: '#1C1C1C', borderRadius: 12, padding: 12, width: '47%', borderWidth: 1, borderColor: '#2A2A2A'},
+  infoCard: {backgroundColor: '#141414', borderRadius: 12, padding: 12, width: '47%', borderTopWidth: 2, borderTopColor: '#C9956C44', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8},
   infoLabel: {color: '#A09080', fontSize: 11, marginBottom: 4},
   infoValue: {color: '#FFFFFF', fontSize: 14, fontWeight: '500'},
   sectionTitle: {color: '#C9956C', fontSize: 16, fontWeight: 'bold', marginBottom: 8, marginTop: 4},
   description: {color: '#A09080', fontSize: 15, lineHeight: 24, marginBottom: 20},
-  linkBox: {backgroundColor: '#1C1C1C', borderRadius: 12, padding: 14, marginBottom: 20, borderWidth: 1, borderColor: '#C9956C'},
+  linkBox: {backgroundColor: '#141414', borderRadius: 12, padding: 14, marginBottom: 20, borderTopWidth: 2, borderTopColor: '#C9956C44', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8},
   linkBoxText: {color: '#C9956C', fontSize: 13, fontWeight: 'bold', marginBottom: 4},
   linkBoxUrl: {color: '#A09080', fontSize: 12},
-  directorCard: {backgroundColor: '#1C1C1C', borderRadius: 16, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#2A2A2A'},
+  directorCard: {backgroundColor: '#141414', borderRadius: 16, padding: 16, marginBottom: 20, borderTopWidth: 2, borderTopColor: '#C9956C44', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 8}, shadowOpacity: 0.6, shadowRadius: 24, elevation: 8},
   directorRow: {flexDirection: 'row', gap: 12, marginBottom: 12},
   directorPhoto: {width: 60, height: 60, borderRadius: 30, borderWidth: 2, borderColor: '#C9956C'},
   directorAvatar: {width: 60, height: 60, borderRadius: 30, backgroundColor: '#C9956C', justifyContent: 'center', alignItems: 'center'},
@@ -634,44 +802,74 @@ const styles = StyleSheet.create({
   portfolioSection: {borderTopWidth: 1, borderTopColor: '#2A2A2A', paddingTop: 12, marginBottom: 8},
   portfolioTitle: {color: '#A09080', fontSize: 13, fontWeight: '500', marginBottom: 8},
   portfolioLink: {color: '#C9956C', fontSize: 13, marginBottom: 6},
-  messageBtn: {backgroundColor: '#0A0A0A', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 12, borderWidth: 1, borderColor: '#C9956C'},
+  messageBtn: {backgroundColor: 'rgba(201,149,108,0.08)', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 12, borderWidth: 0.5, borderColor: 'rgba(201,149,108,0.3)', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4},
   messageBtnText: {color: '#C9956C', fontSize: 14, fontWeight: 'bold'},
-  noteBox: {backgroundColor: '#1C1C1C', borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#2A2A2A'},
+  noteBox: {backgroundColor: '#141414', borderRadius: 12, padding: 14, marginBottom: 16, borderTopWidth: 2, borderTopColor: '#C9956C44', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8},
   noteLabel: {color: '#C9956C', fontSize: 13, fontWeight: '700', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5},
   noteInput: {backgroundColor: '#0A0A0A', borderRadius: 10, padding: 12, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2A2A2A', minHeight: 100, textAlignVertical: 'top'},
   noteCount: {color: '#A09080', fontSize: 11, textAlign: 'right', marginTop: 4},
   buttonRow: {flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 8},
-  applyBtn: {backgroundColor: '#C9956C', borderRadius: 12, padding: 16, alignItems: 'center', justifyContent: 'center'},
-  applyBtnDone: {backgroundColor: '#064E3B'},
-  applyBtnText: {color: '#FFFFFF', fontSize: 16, fontWeight: 'bold'},
+  applyBtn: {backgroundColor: '#C9956C', borderRadius: 12, padding: 16, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', borderLeftWidth: 0, borderRightWidth: 0, shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
+  applyBtnDone: {backgroundColor: '#064E3B', borderTopWidth: 1.5, borderBottomWidth: 1.5, borderLeftWidth: 1.5, borderRightWidth: 1.5, borderColor: '#4ADE80', shadowColor: '#000', elevation: 4, paddingVertical: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center'},
+  applyBtnText: {color: '#FFFFFF', fontSize: 15, fontWeight: 'bold'},
   whatsappBtn: {backgroundColor: '#25D366', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', flex: 0.45},
-  whatsappBtnText: {color: '#FFFFFF', fontSize: 14, fontWeight: 'bold'},
+  whatsappBtnText: {color: '#FFFFFF', fontSize: 15, fontWeight: 'bold'},
   skipBtn: {alignItems: 'center', marginTop: 12, padding: 8},
   skipBtnText: {color: '#A09080', fontSize: 13, textDecorationLine: 'underline'},
+
+  /* ✅ APPLICANTS */
+  applicantsSection: {marginTop: 24},
+  applicantCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#141414', borderRadius: 12,
+    padding: 12, marginBottom: 10,
+    borderTopWidth: 2, borderTopColor: '#C9956C44',
+    borderWidth: 1, borderColor: '#2A2A2A',
+    borderBottomWidth: 3, borderBottomColor: '#C9956C22',
+    borderRightWidth: 2, borderRightColor: '#1A1A1A',
+    shadowColor: '#000', shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.5, shadowRadius: 12, elevation: 8,
+  },
+  applicantInfo: {flex: 1},
+  applicantName: {color: '#FFFFFF', fontSize: 14, fontWeight: '600'},
+  applicantMeta: {color: '#A09080', fontSize: 11, marginTop: 2},
+  applicantNote: {color: '#C9956C', fontSize: 12, marginTop: 4, fontStyle: 'italic'},
+  applicantArrow: {color: '#C9956C', fontSize: 24, fontWeight: 'bold'},
+  applicantHint: {color: '#A09080', fontSize: 11, textAlign: 'center', marginTop: 4, marginBottom: 8},
 
   /* ✅ COMMENTS */
   commentsSection: {marginTop: 24},
   commentInputRow: {flexDirection: 'row', gap: 8, marginBottom: 16, alignItems: 'flex-end'},
   commentInput: {
-    flex: 1, backgroundColor: '#1C1C1C',
+    flex: 1, backgroundColor: '#060606',
     borderRadius: 12, padding: 12,
     color: '#FFFFFF', fontSize: 14,
-    borderWidth: 1, borderColor: '#2A2A2A',
-    maxHeight: 100,
+    borderWidth: 1, borderColor: '#1A1A1A',
+    maxHeight: 100, elevation: 0,
   },
   commentSendBtn: {
     backgroundColor: '#C9956C', borderRadius: 12,
     paddingHorizontal: 16, paddingVertical: 12,
     alignItems: 'center', justifyContent: 'center',
+    borderTopWidth: 2, borderTopColor: '#E8C4A0',
+    borderBottomWidth: 2, borderBottomColor: '#7A5535',
+    borderLeftWidth: 0, borderRightWidth: 0,
+    shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.35, shadowRadius: 12, elevation: 8,
   },
   commentSendBtnDisabled: {opacity: 0.4},
   commentSendText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 14},
   noComments: {alignItems: 'center', paddingVertical: 20},
   noCommentsText: {color: '#A09080', fontSize: 14},
   commentCard: {
-    backgroundColor: '#1C1C1C', borderRadius: 12,
+    backgroundColor: '#141414', borderRadius: 12,
     padding: 12, marginBottom: 10,
+    borderTopWidth: 2, borderTopColor: '#C9956C44',
     borderWidth: 1, borderColor: '#2A2A2A',
+    borderBottomWidth: 3, borderBottomColor: '#C9956C22',
+    borderRightWidth: 2, borderRightColor: '#1A1A1A',
+    shadowColor: '#000', shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.5, shadowRadius: 12, elevation: 8,
   },
   commentHeader: {flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8},
   commentAvatar: {

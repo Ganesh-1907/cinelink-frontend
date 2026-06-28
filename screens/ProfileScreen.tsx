@@ -379,7 +379,7 @@ export default function ProfileScreen({navigation}: any) {
         <Text style={styles.sectionTitle}>Basic Info</Text>
 
         <Text style={styles.label}>I am a:</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roleRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roleRow} contentContainerStyle={{gap: 8, paddingRight: 8}}>
           {['Actor', 'Director', 'Writer', 'Editor', 'DOP', 'Producer', 'Creator'].map(r => (
             <TouchableOpacity
               key={r}
@@ -525,6 +525,7 @@ export default function ProfileScreen({navigation}: any) {
             {icon: '🎥', label: 'My Films', screen: 'MyFilms'},
             {icon: '🏆', label: 'My Contests', screen: 'MyContests'},
             {icon: '💾', label: 'Saved Auditions', screen: 'SavedAuditions'},
+            {icon: '🎓', label: 'Industry Guide', screen: 'IndustryGuide'},
             {icon: '⚙️', label: 'Settings', screen: 'Settings'},
           ].map(item => (
             <TouchableOpacity
@@ -622,8 +623,9 @@ const styles = StyleSheet.create({
   label:        {color: '#A09080', fontSize: 13, marginBottom: 8, marginTop: 12},
   roleRow:      {flexDirection: 'row', gap: 8, marginBottom: 8},
   roleBtn: {
-    flex: 1, backgroundColor: '#2A2A2A', borderRadius: 10,
-    paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#333333',
+    backgroundColor: '#2A2A2A', borderRadius: 10,
+    paddingVertical: 10, paddingHorizontal: 18,
+    alignItems: 'center', borderWidth: 1, borderColor: '#333333',
   },
   roleBtnActive:     {backgroundColor: '#C9956C', borderColor: '#C9956C'},
   roleBtnText:       {color: '#A09080', fontSize: 13, fontWeight: '500'},

@@ -21,6 +21,9 @@ import auth from '@react-native-firebase/auth';
 import {launchImageLibrary} from 'react-native-image-picker';
 
 import ReportModal from './ReportModal';
+import {LiquidPress} from '../components/LiquidPress';
+import EngagementBar from '../components/EngagementBar';
+import {RippleIcon} from '../components/RippleIcon';
 
 const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
 const CLOUD_NAME = 'dipwobgzb';
@@ -29,11 +32,11 @@ const UPLOAD_PRESET = 'cinelink_upload';
 const C = {
   background:    '#0A0A0A',
   surface:       '#111111',
-  card:          '#181818',
-  cardElevated:  '#202020',
-  inputBg:       '#161616',
-  border:        '#242424',
-  borderLight:   '#2E2E2E',
+  card:          '#141414',
+  cardElevated:  '#1A1A1A',
+  inputBg:       '#0E0E0E',
+  border:        '#1E1E1E',
+  borderLight:   '#2A2A2A',
   roseGold:      '#C9956C',
   roseGoldLight: '#E8C4A0',
   roseGoldDark:  '#A3734E',
@@ -92,12 +95,17 @@ function SkeletonCard() {
   );
 }
 
-function EmptyState({icon, title, subtitle}: any) {
+function EmptyState({icon, title, subtitle, onAction, actionLabel}: any) {
   return (
     <View style={styles.emptyState}>
       <Text style={styles.emptyIcon}>{icon}</Text>
       <Text style={styles.emptyTitle}>{title}</Text>
       <Text style={styles.emptySubtitle}>{subtitle}</Text>
+      {onAction && actionLabel && (
+        <LiquidPress style={styles.emptyActionBtn} onPress={onAction}>
+          <Text style={styles.emptyActionText}>{actionLabel}</Text>
+        </LiquidPress>
+      )}
     </View>
   );
 }
@@ -255,9 +263,9 @@ function ProfileCard({item, navigation}: any) {
               <Text style={styles.connectedChipText}>✓ Connected</Text>
             </View>
           ) : (
-            <TouchableOpacity style={styles.connectBtn} onPress={handleConnect}>
+            <LiquidPress style={styles.connectBtn} onPress={handleConnect}>
               <Text style={styles.connectBtnText}>Connect</Text>
-            </TouchableOpacity>
+            </LiquidPress>
           )}
         </View>
       </View>
@@ -267,6 +275,180 @@ function ProfileCard({item, navigation}: any) {
         <Text style={styles.viewProfileText}>View Profile →</Text>
       </TouchableOpacity>
     </View>
+  );
+}
+
+const CATEGORY_COLORS: Record<string, {bg: string; text: string; border: string}> = {
+  'Movies':        {bg: 'rgba(201,149,108,0.15)', text: '#C9956C', border: 'rgba(201,149,108,0.5)'},
+  'Short Films':   {bg: 'rgba(74,222,128,0.10)',  text: '#4ADE80', border: 'rgba(74,222,128,0.4)'},
+  'Theatre':       {bg: 'rgba(129,140,248,0.10)', text: '#818CF8', border: 'rgba(129,140,248,0.4)'},
+  'YouTube / Web': {bg: 'rgba(248,113,113,0.10)', text: '#F87171', border: 'rgba(248,113,113,0.4)'},
+  'TV / OTT':      {bg: 'rgba(251,191,36,0.10)',  text: '#FBBF24', border: 'rgba(251,191,36,0.4)'},
+};
+
+function AuditionCard({item, navigation}: any) {
+  const formatTime = (ts: any) => {
+    if (!ts?.toDate) return '';
+    const d = ts.toDate();
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - d.getTime()) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 172800) return 'yesterday';
+    return d.toLocaleDateString([], {day: 'numeric', month: 'short'});
+  };
+
+  const getDaysLeft = (dateStr: string) => {
+    if (!dateStr) return null;
+    const deadline = new Date(dateStr);
+    if (isNaN(deadline.getTime())) return null;
+    const diff = Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    if (diff < 0) return {label: 'Deadline passed', color: '#FCA5A5'};
+    if (diff === 0) return {label: 'Last day!', color: '#FBBF24'};
+    return {label: `${diff} days left`, color: '#4ADE80'};
+  };
+
+  const isAuditionDoc = item.source === 'audition';
+  const daysLeft = isAuditionDoc ? getDaysLeft(item.lastDate) : null;
+  const catColor = (isAuditionDoc && item.category && CATEGORY_COLORS[item.category])
+    ? CATEGORY_COLORS[item.category]
+    : CATEGORY_COLORS['Movies'];
+
+  return (
+    <TouchableOpacity
+      style={styles.auditionCard}
+      onPress={() => isAuditionDoc
+        ? navigation.navigate('AuditionDetail', {audition: item})
+        : navigation.navigate('BrowseAuditions')
+      }
+      activeOpacity={0.85}>
+
+      {/* Header */}
+      <View style={styles.auditionCardHeader}>
+        <View style={styles.auditionBadge}>
+          <Text style={styles.auditionBadgeText}>
+            {isAuditionDoc ? '🎭 Audition' : '🛡️ CineLink Admin'}
+          </Text>
+        </View>
+        <Text style={styles.bubbleTime}>{formatTime(item.createdAt)}</Text>
+      </View>
+
+      {/* Category pill */}
+      {isAuditionDoc && item.category ? (
+        <View style={[styles.categoryPill, {backgroundColor: catColor.bg, borderColor: catColor.border}]}>
+          <Text style={[styles.categoryPillText, {color: catColor.text}]}>{item.category}</Text>
+        </View>
+      ) : null}
+
+      {/* Poster */}
+      {(item.posterUrl || item.imageUrl) ? (
+        <Image
+          source={{uri: item.posterUrl || item.imageUrl}}
+          style={styles.auditionPoster}
+          resizeMode="cover"
+        />
+      ) : null}
+
+      {/* Title */}
+      <Text style={styles.auditionTitle} numberOfLines={2}>
+        {item.title || item.text || 'Audition'}
+      </Text>
+
+      {/* Budget + Positions */}
+      {isAuditionDoc && (item.budget || item.positions) ? (
+        <View style={styles.budgetRow}>
+          {item.budget ? (
+            <View style={styles.budgetPill}>
+              <Text style={styles.budgetPillText}>💰 {item.budget}</Text>
+            </View>
+          ) : null}
+          {item.positions ? (
+            <View style={styles.positionsPill}>
+              <Text style={styles.positionsPillText}>👥 {item.positions}</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Meta badges */}
+      <View style={styles.auditionMeta}>
+        {item.role ? (
+          <View style={styles.metaBadge}>
+            <Text style={styles.metaBadgeText}>🎭 {item.role}</Text>
+          </View>
+        ) : null}
+        {item.location ? (
+          <View style={styles.metaBadge}>
+            <Text style={styles.metaBadgeText}>📍 {item.location}</Text>
+          </View>
+        ) : null}
+        {item.gender ? (
+          <View style={styles.metaBadge}>
+            <Text style={styles.metaBadgeText}>👤 {item.gender}</Text>
+          </View>
+        ) : null}
+        {item.language ? (
+          <View style={styles.metaBadge}>
+            <Text style={styles.metaBadgeText}>🗣 {item.language}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* Director + applicants */}
+      <View style={styles.auditionFooterRow}>
+        {item.directorName ? (
+          <Text style={styles.auditionDirector}>👥 {item.directorName}</Text>
+        ) : null}
+        {isAuditionDoc ? (
+          <Text style={styles.applicantsText}>
+            {item.applicants?.length || item.applicationCount || 0} applied
+          </Text>
+        ) : null}
+      </View>
+
+      {/* Deadline countdown */}
+      {isAuditionDoc && item.lastDate ? (
+        <View style={styles.deadlineRow}>
+          <Text style={styles.deadlineLabel}>Apply before {item.lastDate}</Text>
+          {daysLeft ? (
+            <Text style={[styles.daysLeftText, {color: daysLeft.color}]}>{daysLeft.label}</Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Engagement */}
+      {isAuditionDoc && (
+        <EngagementBar
+          auditionId={item.id}
+          likes={item.likes || 0}
+          likedBy={item.likedBy || []}
+          commentCount={0}
+          views={item.views || 0}
+          shareTitle={item.title || 'Audition'}
+        />
+      )}
+
+      {/* CTA */}
+      {isAuditionDoc ? (
+        <View style={styles.auditionBtnRow}>
+          <TouchableOpacity
+            style={styles.contactBtn}
+            onPress={e => { e.stopPropagation?.(); navigation.navigate('AuditionDetail', {audition: item}); }}>
+            <Text style={styles.contactBtnText}>Contact</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.applyBtnFilled}
+            onPress={e => { e.stopPropagation?.(); navigation.navigate('AuditionDetail', {audition: item}); }}>
+            <Text style={styles.applyBtnFilledText}>Apply →</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.auditionCTA}>
+          <Text style={styles.auditionCTAText}>View & Apply →</Text>
+        </View>
+      )}
+    </TouchableOpacity>
   );
 }
 
@@ -363,18 +545,20 @@ function PostBubble({item, isAdmin, onDelete, navigation}: any) {
         <Text style={styles.bubbleTime}>{formatTime(item.createdAt)}</Text>
       </View>
 
-      {item.imageUrl ? (
+      {(item.posterUrl || item.imageUrl) ? (
         <TouchableOpacity
           activeOpacity={0.9}
-          onPress={() => navigation.navigate('ImageViewer', {imageUrl: item.imageUrl})}>
-          <Image source={{uri: item.imageUrl}} style={styles.bubbleImage} resizeMode="cover" />
+          onPress={() => navigation.navigate('ImageViewer', {imageUrl: item.posterUrl || item.imageUrl})}>
+          <Image source={{uri: item.posterUrl || item.imageUrl}} style={styles.bubbleImage} resizeMode="cover" />
           <View style={styles.tapHint}>
             <Text style={styles.tapHintText}>🔍 Tap to view fullscreen</Text>
           </View>
         </TouchableOpacity>
       ) : null}
 
-      {item.text ? <PhoneText text={item.text} textStyle={styles.bubbleText} /> : null}
+      {(item.title || item.text)
+        ? <PhoneText text={item.title || item.text} textStyle={styles.bubbleText} />
+        : null}
 
       <View style={styles.bubbleActions}>
         <TouchableOpacity
@@ -403,7 +587,7 @@ function PostBubble({item, isAdmin, onDelete, navigation}: any) {
               multiline
               maxLength={200}
             />
-            <TouchableOpacity
+            <LiquidPress
               style={[styles.commentSendBtn, (!commentText.trim() || postingComment) && {opacity: 0.4}]}
               onPress={postComment}
               disabled={!commentText.trim() || postingComment}>
@@ -412,7 +596,7 @@ function PostBubble({item, isAdmin, onDelete, navigation}: any) {
               ) : (
                 <Text style={styles.commentSendText}>Post</Text>
               )}
-            </TouchableOpacity>
+            </LiquidPress>
           </View>
           {postComments.length === 0 ? (
             <Text style={styles.noCommentsText}>No comments yet. Be the first!</Text>
@@ -469,7 +653,8 @@ export default function HomeScreen({navigation}: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [reportTarget, setReportTarget] = useState<any>(null);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadCount, setUnreadCount]         = useState(0);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(
     auth().currentUser?.photoURL || null,
   );
@@ -490,6 +675,22 @@ export default function HomeScreen({navigation}: any) {
   useEffect(() => {
     if (!currentUser) return;
     const unsub = firestore()
+      .collection('chats')
+      .where('participants', 'array-contains', currentUser.uid)
+      .onSnapshot(snap => {
+        let total = 0;
+        snap.docs.forEach(doc => {
+          const d = doc.data();
+          total += d.unreadCount?.[currentUser.uid] || 0;
+        });
+        setChatUnreadCount(total);
+      }, () => {});
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsub = firestore()
       .collection('users')
       .doc(currentUser.uid)
       .onSnapshot(doc => {
@@ -500,19 +701,55 @@ export default function HomeScreen({navigation}: any) {
     return () => unsub();
   }, []);
 
+  // ── Load auditions: merge feedPosts + auditions collections ──
   useEffect(() => {
     setFeedLoading(true);
-    const unsubAuditions = firestore()
+
+    const unsubFeed = firestore()
       .collection('feedPosts')
       .where('tab', '==', 'auditions')
       .orderBy('createdAt', 'desc')
       .onSnapshot(
-        snap => {
-          setAuditionPosts(snap.docs.map(d => ({id: d.id, ...d.data()})));
+        feedSnap => {
+          const feedItems = feedSnap.docs.map(d => ({
+            id: d.id,
+            source: 'feed',
+            ...d.data(),
+          }));
+
+          // Fetch auditions separately (no composite index needed)
+          firestore()
+            .collection('auditions')
+            .orderBy('createdAt', 'desc')
+            .get()
+            .then(audSnap => {
+              const audItems = audSnap.docs
+                .map(d => ({id: d.id, source: 'audition', ...d.data()}))
+                .filter((a: any) => a.isActive !== false); // filter inactive in JS
+
+              // Merge both lists and sort by time
+              const merged = [...feedItems, ...audItems].sort((a: any, b: any) => {
+                const aTime = (a.createdAt as any)?.seconds || 0;
+                const bTime = (b.createdAt as any)?.seconds || 0;
+                return bTime - aTime;
+              });
+
+              setAuditionPosts(merged);
+              setFeedLoading(false);
+            })
+            .catch(err => {
+              console.log('AUDITIONS FETCH ERROR:', err);
+              // Still show feed posts even if auditions fetch fails
+              setAuditionPosts(feedItems);
+              setFeedLoading(false);
+            });
+        },
+        err => {
+          console.log('FEED ERROR:', err);
           setFeedLoading(false);
         },
-        err => {console.log('AUDITIONS ERROR:', err); setFeedLoading(false);},
       );
+
     const unsubGeneral = firestore()
       .collection('feedPosts')
       .where('tab', '==', 'general')
@@ -521,7 +758,11 @@ export default function HomeScreen({navigation}: any) {
         snap => setGeneralPosts(snap.docs.map(d => ({id: d.id, ...d.data()}))),
         err => console.log('GENERAL ERROR:', err),
       );
-    return () => { unsubAuditions(); unsubGeneral(); };
+
+    return () => {
+      unsubFeed();
+      unsubGeneral();
+    };
   }, []);
 
   useEffect(() => {
@@ -558,11 +799,10 @@ export default function HomeScreen({navigation}: any) {
     setSearchText(text);
     if (text.trim().length > 1) {
       const q = text.toLowerCase();
-      // Search across auditions, films and contests
       const auditionMatches = auditionPosts
-        .filter(p => p.text?.toLowerCase().includes(q))
+        .filter(p => (p.text || p.title)?.toLowerCase().includes(q))
         .slice(0, 3)
-        .map(p => ({id: p.id, label: p.text?.substring(0, 60), type: '🎭'}));
+        .map(p => ({id: p.id, label: (p.title || p.text)?.substring(0, 60), type: '🎭'}));
       const filmMatches = films
         .filter(f => f.title?.toLowerCase().includes(q) || f.genre?.toLowerCase().includes(q))
         .slice(0, 2)
@@ -578,10 +818,9 @@ export default function HomeScreen({navigation}: any) {
   };
 
   const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1000);
-  }, []);
-
+  setRefreshing(true);
+  setTimeout(() => setRefreshing(false), 2000);
+}, []);
   const loadComments = async (filmId: string) => {
     try {
       const snap = await firestore()
@@ -616,25 +855,10 @@ export default function HomeScreen({navigation}: any) {
         imageUrl = data.secure_url;
       }
       await firestore().collection('feedPosts').add({
-        tab, text: postText.trim(), imageUrl,
+        tab, text: postText.trim(), posterUrl: imageUrl,
         createdAt: firestore.FieldValue.serverTimestamp(),
         postedBy: currentUser?.email, postedById: currentUser?.uid,
       });
-
-      // Also save to auditions collection so Browse Auditions can find it
-      if (tab === 'auditions') {
-        await firestore().collection('auditions').add({
-          title: postText.trim(),
-          description: postText.trim(),
-          imageUrl,
-          isActive: true,
-          status: 'Open',
-          createdAt: firestore.FieldValue.serverTimestamp(),
-          directorId: currentUser?.uid,
-          directorEmail: currentUser?.email,
-          directorName: currentUser?.displayName || currentUser?.email?.split('@')[0],
-        });
-      }
 
       setPostText('');
       setPostImage(null);
@@ -714,18 +938,18 @@ export default function HomeScreen({navigation}: any) {
           </TouchableOpacity>
           <TextInput
             style={styles.composerInput}
-            placeholder={tab === 'auditions' ? 'Post an audition...' : 'Post an update...'}
+            placeholder={tab === 'auditions' ? 'Post an audition update...' : 'Post an update...'}
             placeholderTextColor={C.textTertiary}
             value={postText}
             onChangeText={setPostText}
             multiline
           />
-          <TouchableOpacity
+          <LiquidPress
             style={[styles.sendBtn, (!postText.trim() && !postImage) && styles.sendBtnDisabled]}
             onPress={() => sendPost(tab)}
             disabled={posting || (!postText.trim() && !postImage)}>
             {posting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.sendBtnText}>Send</Text>}
-          </TouchableOpacity>
+          </LiquidPress>
         </View>
       </View>
     );
@@ -733,13 +957,17 @@ export default function HomeScreen({navigation}: any) {
 
   const renderFeed = (tab: 'auditions' | 'general') => {
     const allPosts = tab === 'auditions' ? auditionPosts : generalPosts;
+
     const posts = searchText.trim()
       ? allPosts.filter(p =>
-          p.text?.toLowerCase().includes(searchText.toLowerCase()) ||
-          p.title?.toLowerCase().includes(searchText.toLowerCase()),
+          (p.text || p.title)?.toLowerCase().includes(searchText.toLowerCase()) ||
+          p.location?.toLowerCase().includes(searchText.toLowerCase()),
         )
       : activeFilter !== 'All'
-      ? allPosts.filter(p => p.text?.toLowerCase().includes(activeFilter.toLowerCase()))
+      ? allPosts.filter(p =>
+          (p.text || p.title)?.toLowerCase().includes(activeFilter.toLowerCase()) ||
+          p.role?.toLowerCase().includes(activeFilter.toLowerCase()),
+        )
       : allPosts;
 
     return (
@@ -759,18 +987,29 @@ export default function HomeScreen({navigation}: any) {
           <EmptyState
             icon={tab === 'auditions' ? '🎭' : '📢'}
             title={tab === 'auditions' ? 'No auditions found' : 'No posts found'}
-            subtitle={searchText ? 'Try a different search term' : 'Admin will post updates here'}
+            subtitle={searchText ? 'Try a different search term' : tab === 'auditions' ? 'Directors will post auditions here' : 'Admin will post updates here'}
+            onAction={tab === 'auditions' && !searchText ? () => navigation.navigate('BrowseAuditions') : undefined}
+            actionLabel={tab === 'auditions' && !searchText ? 'Browse All Auditions' : undefined}
           />
         ) : (
-          posts.map(post => (
-            <PostBubble
-              key={post.id}
-              item={post}
-              isAdmin={isAdmin}
-              onDelete={deletePost}
-              navigation={navigation}
-            />
-          ))
+          posts.map(post =>
+            // Show AuditionCard for director-posted auditions, PostBubble for admin feed posts
+            post.source === 'audition' ? (
+              <AuditionCard
+                key={post.id}
+                item={post}
+                navigation={navigation}
+              />
+            ) : (
+              <PostBubble
+                key={post.id}
+                item={post}
+                isAdmin={isAdmin}
+                onDelete={deletePost}
+                navigation={navigation}
+              />
+            )
+          )
         )}
       </View>
     );
@@ -833,11 +1072,11 @@ export default function HomeScreen({navigation}: any) {
           </View>
 
           <View style={styles.ctaRow}>
-            <TouchableOpacity
+            <LiquidPress
               style={styles.watchBtn}
               onPress={() => navigation.navigate('FilmDetail', {film: item})}>
               <Text style={styles.watchBtnText}>🎬 Watch Film</Text>
-            </TouchableOpacity>
+            </LiquidPress>
             {isOwner && (
               <TouchableOpacity style={styles.deleteFilmBtn} onPress={() => deleteFilm(item.id)}>
                 <Text style={styles.deleteFilmText}>🗑</Text>
@@ -881,9 +1120,9 @@ export default function HomeScreen({navigation}: any) {
         </View>
         {item.description ? <Text style={styles.description} numberOfLines={3}>{item.description}</Text> : null}
         {item.deadline ? <Text style={styles.metaText}>⏰ Deadline: {item.deadline}</Text> : null}
-        <TouchableOpacity style={styles.watchBtn} onPress={() => navigation.navigate('ContestDetail', {contest: item})}>
+        <LiquidPress style={styles.watchBtn} onPress={() => navigation.navigate('ContestDetail', {contest: item})}>
           <Text style={styles.watchBtnText}>Enter Contest →</Text>
-        </TouchableOpacity>
+        </LiquidPress>
       </View>
     ));
   };
@@ -914,27 +1153,40 @@ export default function HomeScreen({navigation}: any) {
               </Text>
             </View>
             <View style={styles.headerRight}>
-              <TouchableOpacity
-                style={styles.notificationBtn}
-                onPress={() => navigation.navigate('Notifications')}>
-                <Text style={styles.notificationIcon}>🔔</Text>
-                {unreadCount > 0 && (
-                  <View style={styles.notifDot} />
-                )}
-              </TouchableOpacity>
+              <RippleIcon size={42} color="#C9956C" onPress={() => navigation.navigate('Chats')}>
+                <View style={styles.notificationBtn}>
+                  <Text style={styles.notificationIcon}>💬</Text>
+                  {chatUnreadCount > 0 && (
+                    <View style={styles.notifDot}>
+                      <Text style={styles.notifDotText}>{chatUnreadCount > 9 ? '9+' : chatUnreadCount}</Text>
+                    </View>
+                  )}
+                </View>
+              </RippleIcon>
 
-              <TouchableOpacity
-                style={styles.profileButton}
-                onPress={() => navigation.navigate('Profile')}>
-                {profilePhoto ? (
-                  <Image source={{uri: profilePhoto}} style={styles.profileImage} />
-                ) : (
-                  <Text style={styles.profileLetter}>
-                    {auth().currentUser?.displayName?.charAt(0)?.toUpperCase() ||
-                      auth().currentUser?.email?.charAt(0)?.toUpperCase() || 'C'}
-                  </Text>
-                )}
-              </TouchableOpacity>
+              <RippleIcon size={42} color="#C9956C" onPress={() => navigation.navigate('Notifications')}>
+                <View style={styles.notificationBtn}>
+                  <Text style={styles.notificationIcon}>🔔</Text>
+                  {unreadCount > 0 && (
+                    <View style={styles.notifDot}>
+                      <Text style={styles.notifDotText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                    </View>
+                  )}
+                </View>
+              </RippleIcon>
+
+              <RippleIcon size={52} color="#C9956C" onPress={() => navigation.navigate('Profile')}>
+                <View style={styles.profileButton}>
+                  {profilePhoto ? (
+                    <Image source={{uri: profilePhoto}} style={styles.profileImage} />
+                  ) : (
+                    <Text style={styles.profileLetter}>
+                      {auth().currentUser?.displayName?.charAt(0)?.toUpperCase() ||
+                        auth().currentUser?.email?.charAt(0)?.toUpperCase() || 'C'}
+                    </Text>
+                  )}
+                </View>
+              </RippleIcon>
             </View>
           </View>
 
@@ -955,20 +1207,14 @@ export default function HomeScreen({navigation}: any) {
             )}
           </View>
 
-          {/* ── LIVE SUGGESTIONS DROPDOWN ── */}
+          {/* ── LIVE SUGGESTIONS ── */}
           {suggestions.length > 0 && (
             <View style={styles.suggestionsBox}>
               {suggestions.map((s, i) => (
                 <TouchableOpacity
                   key={s.id}
-                  style={[
-                    styles.suggestionItem,
-                    i < suggestions.length - 1 && styles.suggestionBorder,
-                  ]}
-                  onPress={() => {
-                    setSearchText(s.label || '');
-                    setSuggestions([]);
-                  }}>
+                  style={[styles.suggestionItem, i < suggestions.length - 1 && styles.suggestionBorder]}
+                  onPress={() => { setSearchText(s.label || ''); setSuggestions([]); }}>
                   <Text style={styles.suggestionText} numberOfLines={1}>
                     {s.type} {s.label}
                   </Text>
@@ -997,24 +1243,32 @@ export default function HomeScreen({navigation}: any) {
           </ScrollView>
 
           {/* ── ADMIN QUICK ACTIONS ── */}
-          {isAdmin && selectedTab === 'Short Films' && (
-            <View style={styles.aiButtonsContainer}>
-              <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('AIAssistant')}>
-                <Text style={styles.actionBtnIcon}>🤖</Text>
-                <Text style={styles.actionBtnText}>AI Assistant</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionBtn, styles.quickPostBtn]} onPress={() => navigation.navigate('QuickPost')}>
-                <Text style={styles.actionBtnIcon}>⚡</Text>
-                <Text style={styles.actionBtnText}>Quick Post</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          {selectedTab === 'Short Films' && (
+  <View style={styles.aiButtonsContainer}>
+    {isAdmin && (
+      <TouchableOpacity style={styles.actionBtn} onPress={() => navigation.navigate('AIAssistant')}>
+        <Text style={styles.actionBtnIcon}>🤖</Text>
+        <Text style={styles.actionBtnText}>AI Assistant</Text>
+      </TouchableOpacity>
+    )}
+    {isAdmin && (
+      <TouchableOpacity style={[styles.actionBtn, styles.quickPostBtn]} onPress={() => navigation.navigate('QuickPost')}>
+        <Text style={styles.actionBtnIcon}>⚡</Text>
+        <Text style={styles.actionBtnText}>Quick Post</Text>
+      </TouchableOpacity>
+    )}
+    <TouchableOpacity style={[styles.actionBtn, styles.quickPostBtn]} onPress={() => navigation.navigate('UploadFilm')}>
+      <Text style={styles.actionBtnIcon}>🎬</Text>
+      <Text style={styles.actionBtnText}>Upload Film</Text>
+    </TouchableOpacity>
+  </View>
+)}
 
           <View style={{paddingBottom: 100}}>
-            {selectedTab === 'Auditions' && renderFeed('auditions')}
-            {selectedTab === 'General' && renderFeed('general')}
+            {selectedTab === 'Auditions'   && renderFeed('auditions')}
+            {selectedTab === 'General'     && renderFeed('general')}
             {selectedTab === 'Short Films' && renderFilms()}
-            {selectedTab === 'Contests' && renderContests()}
+            {selectedTab === 'Contests'    && renderContests()}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -1033,68 +1287,50 @@ export default function HomeScreen({navigation}: any) {
 const styles = StyleSheet.create({
   container:       {flex: 1, backgroundColor: C.background},
   headerContainer: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 18, paddingTop: 14, marginBottom: 16},
-  headerRight:  {flexDirection: 'row', alignItems: 'center', gap: 10},
-  logo:         {color: C.roseGold, fontSize: 30, fontWeight: '800', letterSpacing: 0.4},
-  welcome:      {color: C.textPrimary, fontSize: 18, fontWeight: '700', marginTop: 4},
-  userHandle:   {color: C.textSecondary, fontSize: 13, marginTop: 2},
+  headerRight:     {flexDirection: 'row', alignItems: 'center', gap: 10},
+  logo:            {color: C.roseGold, fontSize: 30, fontWeight: '800', letterSpacing: 0.4},
+  welcome:         {color: C.textPrimary, fontSize: 18, fontWeight: '700', marginTop: 4},
+  userHandle:      {color: C.textSecondary, fontSize: 13, marginTop: 2},
   notificationBtn: {width: 42, height: 42, borderRadius: 21, backgroundColor: C.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: C.border},
-  notifDot: {position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF3B30'},
+  notifDot:        {position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: '#FF3B30', justifyContent: 'center', alignItems: 'center'},
+  notifDotText:    {color: '#FFFFFF', fontSize: 9, fontWeight: 'bold'},
   notificationIcon:{fontSize: 17},
-  profileButton:   {width: 52, height: 52, borderRadius: 26, backgroundColor: C.card, justifyContent: 'center', alignItems: 'center', borderWidth: 2.5, borderColor: C.roseGold, overflow: 'hidden'},
+  profileButton:   {width: 52, height: 52, borderRadius: 26, backgroundColor: '#1A1A1A', justifyContent: 'center', alignItems: 'center', borderWidth: 2.5, borderColor: '#C9956C', overflow: 'hidden', shadowColor: '#C9956C', shadowOffset: {width: 0, height: 0}, shadowOpacity: 0.25, shadowRadius: 8, elevation: 6},
   profileImage:    {width: 52, height: 52, borderRadius: 26},
   profileLetter:   {color: C.roseGold, fontSize: 20, fontWeight: 'bold'},
-  searchContainer: {flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, marginHorizontal: 18, marginBottom: 4, borderRadius: 14, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 0, height: 48},
-  searchIcon:  {fontSize: 15, marginRight: 8, color: C.textTertiary},
-  searchInput: {flex: 1, color: C.textPrimary, fontSize: 14, height: 48},
+  searchContainer: {flexDirection: 'row', alignItems: 'center', backgroundColor: '#060606', marginHorizontal: 18, marginBottom: 4, borderRadius: 14, borderWidth: 1, borderColor: '#1A1A1A', paddingHorizontal: 14, paddingVertical: 0, height: 48, elevation: 0},
+  searchIcon:      {fontSize: 15, marginRight: 8, color: C.textTertiary},
+  searchInput:     {flex: 1, color: C.textPrimary, fontSize: 14, height: 48},
 
-  // ── Suggestions ──
-  suggestionsBox: {
-    backgroundColor: C.card,
-    marginHorizontal: 18,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  suggestionItem: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  suggestionBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  suggestionText: {
-    color: C.textPrimary,
-    fontSize: 13,
-  },
+  suggestionsBox:   {backgroundColor: C.card, marginHorizontal: 18, borderRadius: 12, borderWidth: 1, borderColor: C.border, marginBottom: 12, overflow: 'hidden'},
+  suggestionItem:   {paddingHorizontal: 16, paddingVertical: 12},
+  suggestionBorder: {borderBottomWidth: 1, borderBottomColor: C.border},
+  suggestionText:   {color: C.textPrimary, fontSize: 13},
 
   tabsScroll:   {marginBottom: 14},
   tabsContent:  {paddingHorizontal: 18, gap: 8},
   tabBtn:       {paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border},
-  activeTab:    {backgroundColor: C.roseGold, borderColor: C.roseGold},
+  activeTab:    {backgroundColor: C.roseGold, borderWidth: 1, borderColor: '#E8C4A0', shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 10, elevation: 10},
   tabText:      {color: C.textSecondary, fontWeight: '600', fontSize: 13},
   activeText:   {color: '#FFFFFF', fontWeight: '700'},
+
   pillsScroll:   {marginBottom: 14},
   pillsContent:  {paddingHorizontal: 18, gap: 8},
   pill:          {paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border},
   pillActive:    {borderColor: C.roseGold, backgroundColor: C.roseGoldFaint},
   pillText:      {color: C.textSecondary, fontSize: 12, fontWeight: '600'},
   pillTextActive:{color: C.roseGold, fontWeight: '700'},
-  ctaBannerRow: {flexDirection: 'row', marginHorizontal: 18, marginBottom: 16, gap: 10},
-  ctaBannerPrimary: {flex: 1, backgroundColor: C.roseGold, borderRadius: 14, paddingVertical: 14, alignItems: 'center'},
-  ctaBannerPrimaryText: {color: '#fff', fontWeight: '700', fontSize: 14},
-  ctaBannerSecondary: {flex: 1, backgroundColor: 'transparent', borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1.5, borderColor: C.roseGold},
-  ctaBannerSecondaryText: {color: C.roseGold, fontWeight: '700', fontSize: 14},
+
   browseBtn:     {backgroundColor: C.roseGoldFaint, marginHorizontal: 18, marginBottom: 12, borderRadius: 14, padding: 15, alignItems: 'center', borderWidth: 1, borderColor: C.roseGold},
   browseBtnText: {color: C.roseGold, fontWeight: '700', fontSize: 14},
+
   aiButtonsContainer: {flexDirection: 'row', gap: 10, marginBottom: 16, paddingHorizontal: 18},
-  actionBtn:     {flex: 1, backgroundColor: C.card, borderRadius: 14, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: C.border},
-  quickPostBtn:  {borderColor: C.roseGold, backgroundColor: C.roseGoldFaint},
-  actionBtnIcon: {fontSize: 18, marginBottom: 4},
-  actionBtnText: {color: C.textPrimary, fontSize: 11, fontWeight: '600'},
-  composer:        {backgroundColor: C.card, marginHorizontal: 18, marginBottom: 16, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: C.border},
+  actionBtn:          {flex: 1, backgroundColor: C.card, borderRadius: 14, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: C.border},
+  quickPostBtn:       {borderColor: C.roseGold, backgroundColor: C.roseGoldFaint},
+  actionBtnIcon:      {fontSize: 18, marginBottom: 4},
+  actionBtnText:      {color: C.textPrimary, fontSize: 11, fontWeight: '600'},
+
+  composer:        {backgroundColor: '#141414', marginHorizontal: 18, marginBottom: 16, borderRadius: 16, overflow: 'hidden', padding: 12, borderTopWidth: 2, borderTopColor: 'rgba(201,149,108,0.3)', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 8}, shadowOpacity: 0.6, shadowRadius: 24, elevation: 8},
   imagePreviewRow: {marginBottom: 8, alignSelf: 'flex-start', position: 'relative'},
   imagePreview:    {width: 120, height: 120, borderRadius: 10},
   removeImageBtn:  {position: 'absolute', top: -6, right: -6, backgroundColor: C.error, borderRadius: 10, width: 22, height: 22, justifyContent: 'center', alignItems: 'center'},
@@ -1103,94 +1339,140 @@ const styles = StyleSheet.create({
   attachBtn:       {width: 40, height: 40, borderRadius: 20, backgroundColor: C.cardElevated, justifyContent: 'center', alignItems: 'center'},
   attachIcon:      {fontSize: 20},
   composerInput:   {flex: 1, backgroundColor: C.cardElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: C.textPrimary, fontSize: 14, maxHeight: 100},
-  sendBtn:         {backgroundColor: C.roseGold, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10},
-  sendBtnDisabled: {opacity: 0.35},
+  sendBtn:         {backgroundColor: C.roseGold, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', borderLeftWidth: 0, borderRightWidth: 0, shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
+  sendBtnDisabled: {opacity: 0.4},
   sendBtnText:     {color: '#fff', fontWeight: 'bold', fontSize: 14},
-  bubble: {backgroundColor: C.card, marginHorizontal: 18, marginBottom: 12, borderRadius: 18, padding: 14, borderWidth: 1, borderColor: C.border},
-  bubbleHeader:   {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10},
-  adminBadge:     {backgroundColor: C.roseGoldFaint, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: C.roseGold},
-  adminBadgeText: {color: C.roseGold, fontSize: 11, fontWeight: '700'},
-  bubbleTime:     {color: C.textTertiary, fontSize: 11},
-  bubbleImage:    {width: '100%', height: 220, borderRadius: 14, marginBottom: 4},
-  tapHint:        {paddingVertical: 4, alignItems: 'center', marginBottom: 8},
-  tapHintText:    {color: C.textTertiary, fontSize: 11},
-  bubbleText:     {color: C.textPrimary, fontSize: 15, lineHeight: 22},
-  bubbleActions:  {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border},
-  commentToggleBtn:  {flexDirection: 'row', alignItems: 'center'},
-  commentToggleText: {color: C.roseGoldLight, fontSize: 13, fontWeight: '600'},
-  bubbleDeleteText:  {color: C.error, fontSize: 12, fontWeight: '600'},
-  commentsBox:     {marginTop: 10, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10},
-  commentInputRow: {flexDirection: 'row', gap: 8, marginBottom: 12, alignItems: 'flex-end'},
-  commentInput:    {flex: 1, backgroundColor: C.cardElevated, borderRadius: 12, padding: 10, color: C.textPrimary, fontSize: 13, borderWidth: 1, borderColor: C.borderLight, maxHeight: 80},
-  commentSendBtn:    {backgroundColor: C.roseGold, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10},
-  commentSendText:   {color: '#FFFFFF', fontWeight: 'bold', fontSize: 13},
-  noCommentsText:    {color: C.textTertiary, fontSize: 13, textAlign: 'center', paddingVertical: 8},
-  commentItem:       {flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10},
-  commentAvatar:     {width: 28, height: 28, borderRadius: 14, backgroundColor: C.roseGoldFaint, borderWidth: 1, borderColor: C.roseGold, justifyContent: 'center', alignItems: 'center', flexShrink: 0},
-  commentAvatarText: {color: C.roseGold, fontWeight: 'bold', fontSize: 11},
-  commentContent:    {flex: 1, backgroundColor: C.cardElevated, borderRadius: 10, padding: 8},
-  commentNameRow:    {flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3},
-  commentName:       {color: C.roseGold, fontSize: 12, fontWeight: 'bold'},
-  commentTime:       {color: C.textTertiary, fontSize: 11},
-  commentText:       {color: C.textPrimary, fontSize: 13, lineHeight: 18},
-  deleteCommentBtn:  {padding: 4, flexShrink: 0},
-  deleteCommentText: {color: C.error, fontSize: 12, fontWeight: 'bold'},
-  profileCard:      {backgroundColor: C.card, borderRadius: 18, marginHorizontal: 18, marginBottom: 12, borderWidth: 1, borderColor: C.border, overflow: 'hidden'},
+
+  // ── Audition Card (for director-posted auditions) ──
+  auditionCard:       {backgroundColor: '#141414', marginHorizontal: 18, marginBottom: 14, borderRadius: 16, overflow: 'hidden', borderTopWidth: 2, borderTopColor: 'rgba(201,149,108,0.3)', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 8}, shadowOpacity: 0.6, shadowRadius: 24, elevation: 8},
+  auditionCardHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, paddingBottom: 8},
+  auditionBadge:      {backgroundColor: C.roseGoldFaint, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: C.roseGold},
+  auditionBadgeText:  {color: C.roseGold, fontSize: 11, fontWeight: '700'},
+  auditionPoster:     {width: '100%', aspectRatio: 3 / 4, backgroundColor: C.cardElevated},
+  auditionTitle:      {color: C.textPrimary, fontSize: 18, fontWeight: '800', padding: 12, paddingBottom: 6},
+  auditionMeta:       {flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingBottom: 8},
+  metaBadge:          {backgroundColor: C.cardElevated, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: C.border},
+  metaBadgeText:      {color: C.textSecondary, fontSize: 11},
+  auditionDirector:   {color: C.textSecondary, fontSize: 12, paddingHorizontal: 12, marginBottom: 10},
+  auditionCTA:        {backgroundColor: C.roseGold, padding: 14, alignItems: 'center'},
+  auditionCTAText:    {color: '#FFFFFF', fontWeight: '700', fontSize: 14},
+  categoryPill:       {flexDirection: 'row', alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, marginBottom: 8, marginHorizontal: 12},
+  categoryPillText:   {fontSize: 11, fontWeight: '700'},
+  budgetRow:          {flexDirection: 'row', gap: 6, paddingHorizontal: 12, marginBottom: 8},
+  budgetPill:         {backgroundColor: 'rgba(251,191,36,0.1)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(251,191,36,0.4)'},
+  budgetPillText:     {color: '#FBBF24', fontSize: 12, fontWeight: '600'},
+  positionsPill:      {backgroundColor: 'rgba(74,222,128,0.1)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)'},
+  positionsPillText:  {color: '#4ADE80', fontSize: 12, fontWeight: '600'},
+  auditionFooterRow:  {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, marginBottom: 4},
+  applicantsText:     {color: '#A09080', fontSize: 11},
+  deadlineRow:        {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, marginBottom: 10},
+  deadlineLabel:      {color: '#A09080', fontSize: 12},
+  daysLeftText:       {fontSize: 12, fontWeight: '700'},
+  auditionBtnRow:     {flexDirection: 'row', gap: 8, marginHorizontal: 12, marginTop: 12, marginBottom: 4},
+  contactBtn:         {flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 1.5, borderColor: '#C9956C', backgroundColor: 'transparent'},
+  contactBtnText:     {color: '#C9956C', fontWeight: '700', fontSize: 14},
+  applyBtnFilled:     {flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: '#C9956C'},
+  applyBtnFilledText: {color: '#FFFFFF', fontWeight: '700', fontSize: 14},
+
+  bubble:           {backgroundColor: '#141414', marginHorizontal: 18, marginBottom: 12, borderRadius: 16, overflow: 'hidden', padding: 14, borderTopWidth: 2, borderTopColor: 'rgba(201,149,108,0.3)', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 8}, shadowOpacity: 0.6, shadowRadius: 24, elevation: 8},
+  bubbleHeader:     {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10},
+  adminBadge:       {backgroundColor: C.roseGoldFaint, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: C.roseGold},
+  adminBadgeText:   {color: C.roseGold, fontSize: 11, fontWeight: '700'},
+  bubbleTime:       {color: C.textTertiary, fontSize: 11},
+  bubbleImage:      {width: '100%', height: 220, borderRadius: 14, marginBottom: 4},
+  tapHint:          {paddingVertical: 4, alignItems: 'center', marginBottom: 8},
+  tapHintText:      {color: C.textTertiary, fontSize: 11},
+  bubbleText:       {color: C.textPrimary, fontSize: 15, lineHeight: 22},
+  bubbleActions:    {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border},
+  commentToggleBtn: {flexDirection: 'row', alignItems: 'center'},
+  commentToggleText:{color: C.roseGoldLight, fontSize: 13, fontWeight: '600'},
+  bubbleDeleteText: {color: C.error, fontSize: 12, fontWeight: '600'},
+
+  commentsBox:      {marginTop: 10, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10},
+  commentInputRow:  {flexDirection: 'row', gap: 8, marginBottom: 12, alignItems: 'flex-end'},
+  commentInput:     {flex: 1, backgroundColor: C.cardElevated, borderRadius: 12, padding: 10, color: C.textPrimary, fontSize: 13, borderWidth: 1, borderColor: C.borderLight, maxHeight: 80},
+  commentSendBtn:   {backgroundColor: C.roseGold, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', borderLeftWidth: 0, borderRightWidth: 0, shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
+  commentSendText:  {color: '#FFFFFF', fontWeight: 'bold', fontSize: 13},
+  noCommentsText:   {color: C.textTertiary, fontSize: 13, textAlign: 'center', paddingVertical: 8},
+  commentItem:      {flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10},
+  commentAvatar:    {width: 28, height: 28, borderRadius: 14, backgroundColor: C.roseGoldFaint, borderWidth: 1, borderColor: C.roseGold, justifyContent: 'center', alignItems: 'center', flexShrink: 0},
+  commentAvatarText:{color: C.roseGold, fontWeight: 'bold', fontSize: 11},
+  commentContent:   {flex: 1, backgroundColor: C.cardElevated, borderRadius: 10, padding: 8},
+  commentNameRow:   {flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3},
+  commentName:      {color: C.roseGold, fontSize: 12, fontWeight: 'bold'},
+  commentTime:      {color: C.textTertiary, fontSize: 11},
+  commentText:      {color: C.textPrimary, fontSize: 13, lineHeight: 18},
+  deleteCommentBtn: {padding: 4, flexShrink: 0},
+  deleteCommentText:{color: C.error, fontSize: 12, fontWeight: 'bold'},
+
+  profileCard:      {backgroundColor: C.card, borderRadius: 18, marginHorizontal: 18, marginBottom: 12, overflow: 'hidden', borderTopWidth: 2, borderTopColor: '#C9956C44', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 8}, shadowOpacity: 0.6, shadowRadius: 24, elevation: 8},
   profileCardInner: {flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12},
   profileInfo:      {flex: 1},
   profileNameRow:   {flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3},
   profileName:      {color: C.textPrimary, fontSize: 16, fontWeight: '700', flexShrink: 1},
   profileMeta:      {color: C.textSecondary, fontSize: 12},
   profileActions:   {},
-  verifiedBadge:     {backgroundColor: C.roseGoldFaint, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: C.roseGold},
-  verifiedBadgeText: {color: C.roseGold, fontSize: 9, fontWeight: '800', letterSpacing: 0.5},
-  verifiedDot:       {position: 'absolute', bottom: 0, right: 0, width: 16, height: 16, borderRadius: 8, backgroundColor: C.roseGold, borderWidth: 1.5, borderColor: C.card, justifyContent: 'center', alignItems: 'center'},
-  connectBtn:         {backgroundColor: C.roseGold, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8},
-  connectBtnText:     {color: '#fff', fontSize: 13, fontWeight: '700'},
-  connectedChip:      {backgroundColor: C.roseGoldFaint, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: C.roseGold},
-  connectedChipText:  {color: C.roseGold, fontSize: 12, fontWeight: '600'},
-  viewProfileBtn:     {borderTopWidth: 1, borderTopColor: C.border, paddingVertical: 11, alignItems: 'center'},
-  viewProfileText:    {color: C.roseGold, fontSize: 13, fontWeight: '600'},
-  card: {backgroundColor: C.card, borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: C.border, marginHorizontal: 18},
-  skeletonHeader:     {flexDirection: 'row', alignItems: 'center', marginBottom: 12},
-  filmCardHeader:     {flexDirection: 'row', alignItems: 'center', marginBottom: 14},
-  filmDirectorName:   {color: C.textPrimary, fontSize: 14, fontWeight: '700'},
-  filmDirectorMeta:   {color: C.textSecondary, fontSize: 12, marginTop: 2},
-  viewsChip:          {backgroundColor: C.cardElevated, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: C.border},
-  viewsChipText:      {color: C.textSecondary, fontSize: 11},
+  verifiedBadge:    {backgroundColor: C.roseGoldFaint, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: C.roseGold},
+  verifiedBadgeText:{color: C.roseGold, fontSize: 9, fontWeight: '800', letterSpacing: 0.5},
+  verifiedDot:      {position: 'absolute', bottom: 0, right: 0, width: 16, height: 16, borderRadius: 8, backgroundColor: C.roseGold, borderWidth: 1.5, borderColor: C.card, justifyContent: 'center', alignItems: 'center'},
+  connectBtn:       {backgroundColor: C.roseGold, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8, borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', borderLeftWidth: 0, borderRightWidth: 0, shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
+  connectBtnText:   {color: '#fff', fontSize: 13, fontWeight: '700'},
+  connectedChip:    {backgroundColor: 'rgba(201,149,108,0.08)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 0.5, borderColor: 'rgba(201,149,108,0.3)', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4},
+  connectedChipText:{color: C.roseGold, fontSize: 12, fontWeight: '600'},
+  viewProfileBtn:   {borderTopWidth: 1, borderTopColor: C.border, paddingVertical: 11, alignItems: 'center'},
+  viewProfileText:  {color: C.roseGold, fontSize: 13, fontWeight: '600'},
+
+  card:                  {backgroundColor: '#141414', borderRadius: 16, padding: 16, marginBottom: 16, marginHorizontal: 18, overflow: 'hidden', borderTopWidth: 2, borderTopColor: 'rgba(201,149,108,0.3)', borderWidth: 1, borderColor: '#2A2A2A', borderBottomWidth: 3, borderBottomColor: '#C9956C22', borderRightWidth: 2, borderRightColor: '#1A1A1A', shadowColor: '#000', shadowOffset: {width: 0, height: 8}, shadowOpacity: 0.6, shadowRadius: 24, elevation: 8},
+  skeletonHeader:        {flexDirection: 'row', alignItems: 'center', marginBottom: 12},
+  filmCardHeader:        {flexDirection: 'row', alignItems: 'center', marginBottom: 14},
+  filmDirectorName:      {color: C.textPrimary, fontSize: 14, fontWeight: '700'},
+  filmDirectorMeta:      {color: C.textSecondary, fontSize: 12, marginTop: 2},
+  viewsChip:             {backgroundColor: C.cardElevated, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: C.border},
+  viewsChipText:         {color: C.textSecondary, fontSize: 11},
   poster:                {width: '100%', height: 195, borderRadius: 14, marginBottom: 14},
   posterPlaceholder:     {width: '100%', height: 140, borderRadius: 14, marginBottom: 14, backgroundColor: C.cardElevated, justifyContent: 'center', alignItems: 'center'},
   posterPlaceholderText: {fontSize: 48},
   cardTitle:             {color: C.textPrimary, fontSize: 20, fontWeight: '800', marginBottom: 10, letterSpacing: 0.2},
-  badgeRow:    {flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10},
-  badge:       {backgroundColor: C.cardElevated, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: C.border},
-  badgeSuccess:{backgroundColor: C.successFaint, borderColor: C.successBorder},
-  badgeText:   {color: C.textSecondary, fontSize: 12},
-  description: {color: C.textSecondary, fontSize: 13, lineHeight: 20, marginBottom: 12},
-  metaText:    {color: C.textSecondary, fontSize: 13, marginBottom: 12},
-  socialRow: {flexDirection: 'row', gap: 16, paddingVertical: 10, marginBottom: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.border},
-  socialBtn:   {flexDirection: 'row', alignItems: 'center'},
-  likeText:    {color: '#FB7185', fontWeight: '700', fontSize: 14},
-  commentIcon: {color: C.roseGoldLight, fontWeight: '700', fontSize: 14},
-  ctaRow:       {flexDirection: 'row', gap: 10, alignItems: 'center'},
-  watchBtn:     {flex: 1, backgroundColor: C.roseGold, borderRadius: 14, paddingVertical: 14, alignItems: 'center'},
-  watchBtnText: {color: '#fff', fontWeight: '700', fontSize: 14},
-  deleteFilmBtn:  {width: 48, height: 48, backgroundColor: C.errorFaint, borderWidth: 1, borderColor: C.errorBorder, borderRadius: 14, justifyContent: 'center', alignItems: 'center'},
-  deleteFilmText: {color: C.error, fontSize: 18},
-  reportBtn:     {marginTop: 12, paddingTop: 10, alignItems: 'center', borderTopWidth: 1, borderTopColor: C.border},
-  reportBtnText: {color: C.textTertiary, fontSize: 12, fontWeight: '500'},
+  badgeRow:              {flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10},
+  badge:                 {backgroundColor: C.cardElevated, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: C.border},
+  badgeSuccess:          {backgroundColor: C.successFaint, borderColor: C.successBorder},
+  badgeText:             {color: C.textSecondary, fontSize: 12},
+  description:           {color: C.textSecondary, fontSize: 13, lineHeight: 20, marginBottom: 12},
+  metaText:              {color: C.textSecondary, fontSize: 13, marginBottom: 12},
+  socialRow:             {flexDirection: 'row', gap: 16, paddingVertical: 10, marginBottom: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.border},
+  socialBtn:             {flexDirection: 'row', alignItems: 'center'},
+  likeText:              {color: '#FB7185', fontWeight: '700', fontSize: 14},
+  commentIcon:           {color: C.roseGoldLight, fontWeight: '700', fontSize: 14},
+  ctaRow:                {flexDirection: 'row', gap: 10, alignItems: 'center'},
+  watchBtn:              {flex: 1, backgroundColor: C.roseGold, borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', borderLeftWidth: 0, borderRightWidth: 0, shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
+  watchBtnText:          {color: '#fff', fontWeight: '700', fontSize: 14},
+  deleteFilmBtn:         {width: 48, height: 48, backgroundColor: C.errorFaint, borderWidth: 1, borderColor: C.errorBorder, borderRadius: 14, justifyContent: 'center', alignItems: 'center'},
+  deleteFilmText:        {color: C.error, fontSize: 18},
+  reportBtn:             {marginTop: 12, paddingTop: 10, alignItems: 'center', borderTopWidth: 1, borderTopColor: C.border},
+  reportBtnText:         {color: C.textTertiary, fontSize: 12, fontWeight: '500'},
+
   contestBanner:     {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12},
   contestBannerText: {color: C.warning, fontWeight: '700', fontSize: 13},
   prizeBadge:        {backgroundColor: C.warningFaint, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3, borderWidth: 1, borderColor: C.warningBorder},
   prizeText:         {color: C.warning, fontSize: 11, fontWeight: 'bold'},
-  emptyState:    {alignItems: 'center', paddingVertical: 60},
-  emptyIcon:     {fontSize: 48, marginBottom: 14},
-  emptyTitle:    {color: C.textPrimary, fontSize: 18, fontWeight: '700', marginBottom: 6},
-  emptySubtitle: {color: C.textSecondary, fontSize: 14},
-  chipApproved: {backgroundColor: C.successFaint, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: C.successBorder, alignItems: 'center'},
-  chipRejected: {backgroundColor: C.errorFaint, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: C.errorBorder, alignItems: 'center'},
-  chipPending: {backgroundColor: C.warningFaint, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: C.warningBorder, alignItems: 'center'},
+
+  emptyState:      {alignItems: 'center', paddingVertical: 60},
+  emptyIcon:       {fontSize: 48, marginBottom: 14},
+  emptyTitle:      {color: C.textPrimary, fontSize: 18, fontWeight: '700', marginBottom: 6},
+  emptySubtitle:   {color: C.textSecondary, fontSize: 14},
+  emptyActionBtn:  {marginTop: 20, backgroundColor: C.roseGold, borderRadius: 25, paddingVertical: 12, paddingHorizontal: 28, borderTopWidth: 2, borderTopColor: C.roseGoldLight, borderBottomWidth: 2, borderBottomColor: C.roseGoldDark, borderLeftWidth: 0, borderRightWidth: 0, elevation: 6},
+  emptyActionText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
+
+  chipApproved:     {backgroundColor: C.successFaint, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: C.successBorder, alignItems: 'center'},
+  chipRejected:     {backgroundColor: C.errorFaint, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: C.errorBorder, alignItems: 'center'},
+  chipPending:      {backgroundColor: C.warningFaint, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: C.warningBorder, alignItems: 'center'},
   chipTextApproved: {color: C.success, fontWeight: '700', fontSize: 13},
   chipTextRejected: {color: C.error, fontWeight: '700', fontSize: 13},
   chipTextPending:  {color: C.warning, fontWeight: '700', fontSize: 13},
+
+  ctaBannerRow:           {flexDirection: 'row', marginHorizontal: 18, marginBottom: 16, gap: 10},
+  ctaBannerPrimary:       {flex: 1, backgroundColor: C.roseGold, borderRadius: 14, paddingVertical: 14, alignItems: 'center'},
+  ctaBannerPrimaryText:   {color: '#fff', fontWeight: '700', fontSize: 14},
+  ctaBannerSecondary:     {flex: 1, backgroundColor: 'transparent', borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1.5, borderColor: C.roseGold},
+  ctaBannerSecondaryText: {color: C.roseGold, fontWeight: '700', fontSize: 14},
 });

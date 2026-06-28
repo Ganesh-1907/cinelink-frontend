@@ -1,4 +1,4 @@
-﻿import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ActivityIndicator, Image, TextInput,
@@ -32,9 +32,54 @@ export default function CrewScreen({navigation}: any) {
   const [searchText, setSearchText] = useState('');
   const [searched, setSearched]     = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<{[key: string]: 'connected' | 'pending' | 'none'}>({});
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
 
   const currentUser = auth().currentUser;
   const searchTimeout = React.useRef<any>(null);
+
+  useEffect(() => {
+    return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current); };
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    firestore()
+      .collection('users').doc(currentUser.uid)
+      .collection('following')
+      .get()
+      .then(snap => setFollowingIds(new Set(snap.docs.map(d => d.id))))
+      .catch(e => console.log(e));
+  }, []);
+
+  useEffect(() => {
+    results.forEach(u => checkConnectionStatus(u.id));
+  }, [results]);
+
+  const toggleFollow = async (targetId: string) => {
+    if (!currentUser) return;
+    const isF = followingIds.has(targetId);
+    const currentUserName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User';
+    try {
+      const followerRef = firestore().collection('users').doc(targetId)
+        .collection('followers').doc(currentUser.uid);
+      const followingRef = firestore().collection('users').doc(currentUser.uid)
+        .collection('following').doc(targetId);
+      if (isF) {
+        await followerRef.delete();
+        await followingRef.delete();
+        setFollowingIds(prev => { const s = new Set(prev); s.delete(targetId); return s; });
+      } else {
+        await followerRef.set({
+          userId: currentUser.uid, userName: currentUserName,
+          email: currentUser.email, followedAt: firestore.FieldValue.serverTimestamp(),
+        });
+        await followingRef.set({
+          userId: targetId, followedAt: firestore.FieldValue.serverTimestamp(),
+        });
+        setFollowingIds(prev => new Set([...prev, targetId]));
+      }
+    } catch (e) { console.log(e); }
+  };
 
   const checkConnectionStatus = async (otherUserId: string) => {
     if (connectionStatus[otherUserId]) return;
@@ -51,7 +96,7 @@ export default function CrewScreen({navigation}: any) {
           .get(),
       ]);
       const isConnected = connSnap.docs.some(d => d.data().users?.includes(otherUserId));
-      const isPending = !reqSnap.empty;
+      const isPending   = !reqSnap.empty;
       setConnectionStatus(prev => ({
         ...prev,
         [otherUserId]: isConnected ? 'connected' : isPending ? 'pending' : 'none',
@@ -144,7 +189,6 @@ export default function CrewScreen({navigation}: any) {
         createdAt:  firestore.FieldValue.serverTimestamp(),
       });
 
-      // Update local status immediately
       setConnectionStatus(prev => ({...prev, [otherUser.id]: 'pending'}));
       Alert.alert('Request Sent! 🤝', `Connection request sent to ${cleanName(otherUser.displayName || otherUser.name || otherUser.email)}`);
     } catch (e: any) {
@@ -156,7 +200,6 @@ export default function CrewScreen({navigation}: any) {
     const displayName = cleanName(item.displayName || item.fullName || item.name || item.email);
     const avatarUrl   = item.photoUrl || item.photoURL || null;
     const status      = connectionStatus[item.id] || 'none';
-    checkConnectionStatus(item.id);
 
     return (
       <TouchableOpacity
@@ -181,24 +224,30 @@ export default function CrewScreen({navigation}: any) {
           {item.location ? <Text style={styles.userLocation}>📍 {item.location}</Text>           : null}
         </View>
 
-        {status === 'connected' ? (
-          <View style={[styles.connectBtn, {borderColor: '#4ADE80'}]}>
-            <Text style={styles.connectText}>✅</Text>
-          </View>
-        ) : status === 'pending' ? (
-          <View style={[styles.connectBtn, {borderColor: '#FBBF24'}]}>
-            <Text style={styles.connectText}>⏳</Text>
-          </View>
-        ) : (
+        <View style={styles.actionCol}>
           <TouchableOpacity
-            style={styles.connectBtn}
-            onPress={e => {
-              e.stopPropagation?.();
-              sendConnectRequest(item);
-            }}>
-            <Text style={styles.connectText}>🤝</Text>
+            style={[styles.followPill, followingIds.has(item.id) && styles.followingPill]}
+            onPress={e => { e.stopPropagation?.(); toggleFollow(item.id); }}>
+            <Text style={styles.followPillText}>
+              {followingIds.has(item.id) ? '✓ Following' : '+ Follow'}
+            </Text>
           </TouchableOpacity>
-        )}
+          {status === 'connected' ? (
+            <View style={[styles.connectBtn, {borderColor: '#4ADE80'}]}>
+              <Text style={styles.connectText}>✅</Text>
+            </View>
+          ) : status === 'pending' ? (
+            <View style={[styles.connectBtn, {borderColor: '#FBBF24'}]}>
+              <Text style={styles.connectText}>⏳</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.connectBtn}
+              onPress={e => { e.stopPropagation?.(); sendConnectRequest(item); }}>
+              <Text style={styles.connectText}>🤝</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </TouchableOpacity>
     );
   };
@@ -347,7 +396,11 @@ const styles = StyleSheet.create({
   userLocation: {color: C.textTertiary,  fontSize: 11, marginTop: 2},
   connectBtn: {
     backgroundColor: C.primaryFaint, borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: C.primary, marginLeft: 8,
+    borderWidth: 1, borderColor: C.primary,
   },
   connectText: {fontSize: 20},
+  actionCol:     {alignItems: 'center', gap: 6, marginLeft: 8},
+  followPill:    {backgroundColor: '#C9956C', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#E8C4A0'},
+  followingPill: {backgroundColor: '#2A2A2A', borderColor: '#C9956C'},
+  followPillText:{color: '#FFFFFF', fontSize: 11, fontWeight: 'bold'},
 });
