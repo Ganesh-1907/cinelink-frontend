@@ -15,7 +15,6 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import {launchImageLibrary} from 'react-native-image-picker';
@@ -24,6 +23,7 @@ import ReportModal from './ReportModal';
 import {LiquidPress} from '../components/LiquidPress';
 import EngagementBar from '../components/EngagementBar';
 import {RippleIcon} from '../components/RippleIcon';
+import {CrownIcon} from '../components/CrownIcon';
 
 const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
 const CLOUD_NAME = 'dipwobgzb';
@@ -1130,6 +1130,61 @@ export default function HomeScreen({navigation}: any) {
   return (
     <>
       <SafeAreaView style={styles.container}>
+
+        <View style={styles.headerContainer}>
+          <View style={{flex: 1}}>
+            <Text style={styles.logo} numberOfLines={1}>CineLink</Text>
+            <Text style={styles.welcome}>Welcome back 👋</Text>
+            <Text style={styles.userHandle}>
+              {auth().currentUser?.displayName || auth().currentUser?.email?.split('@')[0] || 'Creator'}
+            </Text>
+          </View>
+          <View style={styles.headerRight}>
+{!isAdmin && (
+  <RippleIcon size={52} color="#D4AF37" onPress={() => navigation.navigate('PremiumCineLink')}>
+    <View style={styles.premiumBtn}>
+      <CrownIcon />
+    </View>
+  </RippleIcon>
+)}
+
+            <RippleIcon size={42} color="#C9956C" onPress={() => navigation.navigate('Chats')}>
+              <View style={styles.notificationBtn}>
+                <Text style={styles.notificationIcon}>💬</Text>
+                {chatUnreadCount > 0 && (
+                  <View style={styles.notifDot}>
+                    <Text style={styles.notifDotText}>{chatUnreadCount > 9 ? '9+' : chatUnreadCount}</Text>
+                  </View>
+                )}
+              </View>
+            </RippleIcon>
+
+            <RippleIcon size={42} color="#C9956C" onPress={() => navigation.navigate('Notifications')}>
+              <View style={styles.notificationBtn}>
+                <Text style={styles.notificationIcon}>🔔</Text>
+                {unreadCount > 0 && (
+                  <View style={styles.notifDot}>
+                    <Text style={styles.notifDotText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                  </View>
+                )}
+              </View>
+            </RippleIcon>
+
+            <RippleIcon size={52} color="#C9956C" onPress={() => navigation.navigate('Profile')}>
+              <View style={styles.profileButton}>
+                {profilePhoto ? (
+                  <Image source={{uri: profilePhoto}} style={styles.profileImage} />
+                ) : (
+                  <Text style={styles.profileLetter}>
+                    {auth().currentUser?.displayName?.charAt(0)?.toUpperCase() ||
+                      auth().currentUser?.email?.charAt(0)?.toUpperCase() || 'C'}
+                  </Text>
+                )}
+              </View>
+            </RippleIcon>
+          </View>
+        </View>
+
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -1142,53 +1197,6 @@ export default function HomeScreen({navigation}: any) {
               progressBackgroundColor={C.card}
             />
           }>
-
-          {/* ── HEADER ── */}
-          <View style={styles.headerContainer}>
-            <View style={{flex: 1}}>
-              <Text style={styles.logo}>CineLink</Text>
-              <Text style={styles.welcome}>Welcome back 👋</Text>
-              <Text style={styles.userHandle}>
-                {auth().currentUser?.displayName || auth().currentUser?.email?.split('@')[0] || 'Creator'}
-              </Text>
-            </View>
-            <View style={styles.headerRight}>
-              <RippleIcon size={42} color="#C9956C" onPress={() => navigation.navigate('Chats')}>
-                <View style={styles.notificationBtn}>
-                  <Text style={styles.notificationIcon}>💬</Text>
-                  {chatUnreadCount > 0 && (
-                    <View style={styles.notifDot}>
-                      <Text style={styles.notifDotText}>{chatUnreadCount > 9 ? '9+' : chatUnreadCount}</Text>
-                    </View>
-                  )}
-                </View>
-              </RippleIcon>
-
-              <RippleIcon size={42} color="#C9956C" onPress={() => navigation.navigate('Notifications')}>
-                <View style={styles.notificationBtn}>
-                  <Text style={styles.notificationIcon}>🔔</Text>
-                  {unreadCount > 0 && (
-                    <View style={styles.notifDot}>
-                      <Text style={styles.notifDotText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-                    </View>
-                  )}
-                </View>
-              </RippleIcon>
-
-              <RippleIcon size={52} color="#C9956C" onPress={() => navigation.navigate('Profile')}>
-                <View style={styles.profileButton}>
-                  {profilePhoto ? (
-                    <Image source={{uri: profilePhoto}} style={styles.profileImage} />
-                  ) : (
-                    <Text style={styles.profileLetter}>
-                      {auth().currentUser?.displayName?.charAt(0)?.toUpperCase() ||
-                        auth().currentUser?.email?.charAt(0)?.toUpperCase() || 'C'}
-                    </Text>
-                  )}
-                </View>
-              </RippleIcon>
-            </View>
-          </View>
 
           {/* ── SEARCH BAR ── */}
           <View style={styles.searchContainer}>
@@ -1291,6 +1299,8 @@ const styles = StyleSheet.create({
   logo:            {color: C.roseGold, fontSize: 30, fontWeight: '800', letterSpacing: 0.4},
   welcome:         {color: C.textPrimary, fontSize: 18, fontWeight: '700', marginTop: 4},
   userHandle:      {color: C.textSecondary, fontSize: 13, marginTop: 2},
+  premiumBtn:  {width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(0,96,58,0.10)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#D4AF37'},
+  premiumIcon: {fontSize: 24, color: '#00603A'},
   notificationBtn: {width: 42, height: 42, borderRadius: 21, backgroundColor: C.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: C.border},
   notifDot:        {position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: 9, backgroundColor: '#FF3B30', justifyContent: 'center', alignItems: 'center'},
   notifDotText:    {color: '#FFFFFF', fontSize: 9, fontWeight: 'bold'},
@@ -1339,7 +1349,7 @@ const styles = StyleSheet.create({
   attachBtn:       {width: 40, height: 40, borderRadius: 20, backgroundColor: C.cardElevated, justifyContent: 'center', alignItems: 'center'},
   attachIcon:      {fontSize: 20},
   composerInput:   {flex: 1, backgroundColor: C.cardElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: C.textPrimary, fontSize: 14, maxHeight: 100},
-  sendBtn:         {backgroundColor: C.roseGold, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', borderLeftWidth: 0, borderRightWidth: 0, shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
+  sendBtn:         {backgroundColor: C.roseGold, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderTopColor: '#E8C4A0', borderBottomColor: '#7A5535', borderLeftColor: 'rgba(232,196,160,0.45)', borderRightColor: 'rgba(122,85,53,0.45)', shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8},
   sendBtnDisabled: {opacity: 0.4},
   sendBtnText:     {color: '#fff', fontWeight: 'bold', fontSize: 14},
 
@@ -1391,7 +1401,7 @@ const styles = StyleSheet.create({
   commentsBox:      {marginTop: 10, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10},
   commentInputRow:  {flexDirection: 'row', gap: 8, marginBottom: 12, alignItems: 'flex-end'},
   commentInput:     {flex: 1, backgroundColor: C.cardElevated, borderRadius: 12, padding: 10, color: C.textPrimary, fontSize: 13, borderWidth: 1, borderColor: C.borderLight, maxHeight: 80},
-  commentSendBtn:   {backgroundColor: C.roseGold, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', borderLeftWidth: 0, borderRightWidth: 0, shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
+  commentSendBtn:   {backgroundColor: C.roseGold, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderTopColor: '#E8C4A0', borderBottomColor: '#7A5535', borderLeftColor: 'rgba(232,196,160,0.45)', borderRightColor: 'rgba(122,85,53,0.45)', shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8},
   commentSendText:  {color: '#FFFFFF', fontWeight: 'bold', fontSize: 13},
   noCommentsText:   {color: C.textTertiary, fontSize: 13, textAlign: 'center', paddingVertical: 8},
   commentItem:      {flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10},
@@ -1415,7 +1425,7 @@ const styles = StyleSheet.create({
   verifiedBadge:    {backgroundColor: C.roseGoldFaint, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: C.roseGold},
   verifiedBadgeText:{color: C.roseGold, fontSize: 9, fontWeight: '800', letterSpacing: 0.5},
   verifiedDot:      {position: 'absolute', bottom: 0, right: 0, width: 16, height: 16, borderRadius: 8, backgroundColor: C.roseGold, borderWidth: 1.5, borderColor: C.card, justifyContent: 'center', alignItems: 'center'},
-  connectBtn:       {backgroundColor: C.roseGold, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8, borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', borderLeftWidth: 0, borderRightWidth: 0, shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
+  connectBtn:       {backgroundColor: C.roseGold, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8, borderWidth: 1, borderTopColor: '#E8C4A0', borderBottomColor: '#7A5535', borderLeftColor: 'rgba(232,196,160,0.45)', borderRightColor: 'rgba(122,85,53,0.45)', shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
   connectBtnText:   {color: '#fff', fontSize: 13, fontWeight: '700'},
   connectedChip:    {backgroundColor: 'rgba(201,149,108,0.08)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 0.5, borderColor: 'rgba(201,149,108,0.3)', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4},
   connectedChipText:{color: C.roseGold, fontSize: 12, fontWeight: '600'},
@@ -1444,7 +1454,7 @@ const styles = StyleSheet.create({
   likeText:              {color: '#FB7185', fontWeight: '700', fontSize: 14},
   commentIcon:           {color: C.roseGoldLight, fontWeight: '700', fontSize: 14},
   ctaRow:                {flexDirection: 'row', gap: 10, alignItems: 'center'},
-  watchBtn:              {flex: 1, backgroundColor: C.roseGold, borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', borderLeftWidth: 0, borderRightWidth: 0, shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
+  watchBtn:              {flex: 1, backgroundColor: C.roseGold, borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderTopColor: '#E8C4A0', borderBottomColor: '#7A5535', borderLeftColor: 'rgba(232,196,160,0.45)', borderRightColor: 'rgba(122,85,53,0.45)', shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
   watchBtnText:          {color: '#fff', fontWeight: '700', fontSize: 14},
   deleteFilmBtn:         {width: 48, height: 48, backgroundColor: C.errorFaint, borderWidth: 1, borderColor: C.errorBorder, borderRadius: 14, justifyContent: 'center', alignItems: 'center'},
   deleteFilmText:        {color: C.error, fontSize: 18},
@@ -1460,7 +1470,7 @@ const styles = StyleSheet.create({
   emptyIcon:       {fontSize: 48, marginBottom: 14},
   emptyTitle:      {color: C.textPrimary, fontSize: 18, fontWeight: '700', marginBottom: 6},
   emptySubtitle:   {color: C.textSecondary, fontSize: 14},
-  emptyActionBtn:  {marginTop: 20, backgroundColor: C.roseGold, borderRadius: 25, paddingVertical: 12, paddingHorizontal: 28, borderTopWidth: 2, borderTopColor: C.roseGoldLight, borderBottomWidth: 2, borderBottomColor: C.roseGoldDark, borderLeftWidth: 0, borderRightWidth: 0, elevation: 6},
+  emptyActionBtn:  {marginTop: 20, backgroundColor: C.roseGold, borderRadius: 25, paddingVertical: 12, paddingHorizontal: 28, borderWidth: 1, borderTopColor: C.roseGoldLight, borderBottomColor: C.roseGoldDark, borderLeftColor: 'rgba(232,196,160,0.45)', borderRightColor: 'rgba(163,115,78,0.45)', elevation: 6},
   emptyActionText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
 
   chipApproved:     {backgroundColor: C.successFaint, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6, borderWidth: 1, borderColor: C.successBorder, alignItems: 'center'},

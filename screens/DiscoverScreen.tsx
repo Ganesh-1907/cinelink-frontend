@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
+import PremiumBadge from '../src/components/Premium/PremiumBadge';
 
 const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
 
@@ -366,6 +367,11 @@ export default function DiscoverScreen({navigation}: any) {
                 {item.verificationStatus === 'verified' && (
                   <Text style={{fontSize: 12, marginLeft: 4}}>✅</Text>
                 )}
+                <PremiumBadge
+                  tier={item.premiumTier || 'none'}
+                  verifiedReal={item.verifiedReal === true}
+                  size="small"
+                />
               </View>
               <View style={styles.topRolePill}>
                 <Text style={styles.topRoleText}>🎭 {item.role || 'Creator'}</Text>

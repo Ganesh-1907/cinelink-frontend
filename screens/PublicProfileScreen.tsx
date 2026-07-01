@@ -1,16 +1,21 @@
 import React, {useEffect, useState} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, Image, Linking, Alert, Animated,
+  ActivityIndicator, Image, Linking, Alert, Animated, Share, Dimensions,
 } from 'react-native';
 import ImageViewing from 'react-native-image-viewing';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import {LiquidPress} from '../components/LiquidPress';
 import {RippleIcon} from '../components/RippleIcon';
+import PremiumBadge from '../src/components/Premium/PremiumBadge';
 
 const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
 const ADMIN_UID   = 'moVQIEK5RqhXUOf4wk1L7913kZZ2';
+
+const SCREEN_W  = Dimensions.get('window').width;
+const GRID_GAP  = 2;
+const CELL_SIZE = Math.floor((SCREEN_W - GRID_GAP * 2) / 3);
 
 const cleanName = (raw: string | null | undefined): string => {
   if (!raw) return 'Creator';
@@ -354,6 +359,19 @@ const PublicProfileScreen = ({route, navigation}: any) => {
     );
   };
 
+  const handleShare = async () => {
+    const shareName = cleanName(userData?.displayName || userData?.fullName || userData?.name || userData?.email);
+    const shareRole = userData?.role || 'Creator';
+    try {
+      await Share.share({
+        message:
+          `Check out ${shareName}'s profile on CineLink!\n\n` +
+          `They're a ${shareRole} on CineLink — India's casting & film collaboration platform.\n\n` +
+          `Download CineLink to view their full profile and connect! 🎬`,
+      });
+    } catch (_) {}
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -425,11 +443,22 @@ const PublicProfileScreen = ({route, navigation}: any) => {
             </View>
           )}
 
-          <Text style={styles.name}>{displayName}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.name}>{displayName}</Text>
+            <PremiumBadge
+              tier={userData?.premiumTier || 'none'}
+              verifiedReal={userData?.verifiedReal === true}
+              size="large"
+            />
+          </View>
 
           <View style={styles.roleBadge}>
             <Text style={styles.roleText}>🎭 {userData?.role || 'Creator'}</Text>
           </View>
+
+          <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
+            <Text style={styles.shareBtnText}>↗ Share Profile</Text>
+          </TouchableOpacity>
 
           {userData?.bio
             ? <Text style={styles.bio}>{userData.bio}</Text>
@@ -558,6 +587,24 @@ const PublicProfileScreen = ({route, navigation}: any) => {
           )}
         </View>
 
+        {/* PORTFOLIO GALLERY */}
+        {userData?.portfolioMedia?.length > 0 && (
+          <View style={styles.gallerySection}>
+            <Text style={styles.gallerySectionTitle}>Portfolio Gallery</Text>
+            <View style={styles.mediaGrid}>
+              {(userData.portfolioMedia as string[]).map((url: string, i: number) => (
+                <TouchableOpacity
+                  key={i}
+                  style={styles.mediaCell}
+                  activeOpacity={0.85}
+                  onPress={() => openViewer(i, (userData.portfolioMedia as string[]).map((u: string) => ({uri: u})))}>
+                  <Image source={{uri: url}} style={styles.mediaCellImg} resizeMode="cover" />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* INTRO VIDEO */}
         {userData?.introVideoLink ? (
           <View style={styles.section}>
@@ -598,6 +645,106 @@ const PublicProfileScreen = ({route, navigation}: any) => {
             <Text style={styles.emptyText}>No previous works added yet</Text>
           )}
         </View>
+
+        {/* ── CASTING PROFILE ── */}
+        {(userData?.availabilityStatus || userData?.lookingFor ||
+          userData?.profileTags?.length > 0 ||
+          userData?.ageRange || userData?.height || userData?.bodyType) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Casting Profile</Text>
+
+            {/* Availability badge */}
+            {userData?.availabilityStatus ? (() => {
+              const s = userData.availabilityStatus;
+              const color = s === 'Available Now' ? '#4ADE80' : s === 'Booked' ? '#FBBF24' : '#A09080';
+              const bg    = s === 'Available Now' ? 'rgba(74,222,128,0.12)' : s === 'Booked' ? 'rgba(251,191,36,0.12)' : 'rgba(160,144,128,0.12)';
+              const dot   = s === 'Available Now' ? '🟢' : s === 'Booked' ? '🟡' : '🔴';
+              return (
+                <View style={[styles.availBadge, {backgroundColor: bg, borderColor: color}]}>
+                  <Text style={[styles.availBadgeText, {color}]}>{dot} {s}</Text>
+                </View>
+              );
+            })() : null}
+
+            {/* Looking For */}
+            {userData?.lookingFor ? (
+              <View style={styles.castingBlock}>
+                <Text style={styles.castingLabel}>Looking For</Text>
+                <Text style={styles.castingValue}>{userData.lookingFor}</Text>
+              </View>
+            ) : null}
+
+            {/* Profile type tags */}
+            {userData?.profileTags?.length > 0 && (
+              <View style={styles.castingTagRow}>
+                {(userData.profileTags as string[]).map((tag: string) => (
+                  <View key={tag} style={styles.castingTag}>
+                    <Text style={styles.castingTagText}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Physical info chips */}
+            {(userData?.ageRange || userData?.height || userData?.bodyType) && (
+              <View style={styles.physicalRow}>
+                {userData?.ageRange ? (
+                  <View style={styles.physicalChip}>
+                    <Text style={styles.physicalChipIcon}>🎂</Text>
+                    <Text style={styles.physicalChipText}>{userData.ageRange} yrs</Text>
+                  </View>
+                ) : null}
+                {userData?.height ? (
+                  <View style={styles.physicalChip}>
+                    <Text style={styles.physicalChipIcon}>📏</Text>
+                    <Text style={styles.physicalChipText}>{userData.height}</Text>
+                  </View>
+                ) : null}
+                {userData?.bodyType ? (
+                  <View style={styles.physicalChip}>
+                    <Text style={styles.physicalChipIcon}>💪</Text>
+                    <Text style={styles.physicalChipText}>{userData.bodyType}</Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ── SOCIAL LINKS ── */}
+        {(userData?.instagramLink || userData?.youtubeLink) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Social</Text>
+            {userData?.instagramLink ? (
+              <TouchableOpacity
+                style={[styles.socialCard, styles.socialCardIG]}
+                onPress={() => Linking.openURL(userData.instagramLink)}>
+                <Text style={styles.socialCardIcon}>📸</Text>
+                <View style={styles.socialCardContent}>
+                  <Text style={styles.socialCardPlatform}>Instagram</Text>
+                  <Text style={styles.socialCardUrl} numberOfLines={1}>
+                    {userData.instagramLink.replace(/^https?:\/\/(www\.)?/, '')}
+                  </Text>
+                </View>
+                <Text style={styles.socialCardArrow}>→</Text>
+              </TouchableOpacity>
+            ) : null}
+            {userData?.youtubeLink ? (
+              <TouchableOpacity
+                style={[styles.socialCard, styles.socialCardYT]}
+                onPress={() => Linking.openURL(userData.youtubeLink)}>
+                <Text style={styles.socialCardIcon}>▶️</Text>
+                <View style={styles.socialCardContent}>
+                  <Text style={styles.socialCardPlatform}>YouTube</Text>
+                  <Text style={styles.socialCardUrl} numberOfLines={1}>
+                    {userData.youtubeLink.replace(/^https?:\/\/(www\.)?/, '')}
+                  </Text>
+                </View>
+                <Text style={styles.socialCardArrow}>→</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        )}
 
         {isOwnProfile && userData?.phone ? (
           <View style={styles.section}>
@@ -657,7 +804,8 @@ const styles = StyleSheet.create({
   verifiedBadge: {backgroundColor: '#064E3B', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, marginBottom: 10, borderWidth: 1, borderColor: '#6EE7B7'},
   verifiedText:  {color: '#6EE7B7', fontSize: 12, fontWeight: 'bold'},
 
-  name: {color: '#FFFFFF', fontSize: 28, fontWeight: 'bold', marginBottom: 10, textAlign: 'center'},
+  nameRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10},
+  name: {color: '#FFFFFF', fontSize: 28, fontWeight: 'bold', textAlign: 'center'},
 
   roleBadge: {backgroundColor: '#1C1C1C', paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: '#C9956C'},
   roleText:  {color: '#C9956C', fontWeight: '600', fontSize: 13},
@@ -672,7 +820,7 @@ const styles = StyleSheet.create({
   statLabel:      {color: '#A09080', fontSize: 13, marginTop: 4},
 
   actionRow:        {flexDirection: 'row', gap: 12, marginBottom: 8},
-  followButton:     {backgroundColor: '#C9956C', paddingVertical: 12, paddingHorizontal: 28, borderRadius: 25, minWidth: 120, alignItems: 'center', borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', borderLeftWidth: 0, borderRightWidth: 0, shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
+  followButton:     {backgroundColor: '#C9956C', paddingVertical: 12, paddingHorizontal: 28, borderRadius: 25, minWidth: 120, alignItems: 'center', borderWidth: 1, borderTopColor: '#E8C4A0', borderBottomColor: '#7A5535', borderLeftColor: 'rgba(232,196,160,0.45)', borderRightColor: 'rgba(122,85,53,0.45)', shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8},
   followingButton:  {backgroundColor: '#2A2A2A', borderWidth: 1, borderColor: '#C9956C'},
   followButtonText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
 
@@ -719,10 +867,60 @@ const styles = StyleSheet.create({
   skeletonLine:    {backgroundColor: '#1C1C1C', borderRadius: 8},
   skeletonStatBox: {width: 80, height: 60, backgroundColor: '#1C1C1C', borderRadius: 12},
 
+  shareBtn: {
+    marginTop: 10, marginBottom: 4, paddingVertical: 8, paddingHorizontal: 22,
+    borderRadius: 20, borderWidth: 1, borderColor: 'rgba(201,149,108,0.4)',
+  },
+  shareBtnText: {color: '#C9956C', fontSize: 13, fontWeight: '600'},
+
   toastBanner: {
     position: 'absolute', top: 60, left: 20, right: 20,
     backgroundColor: '#064E3B', borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: '#4ADE80', zIndex: 100,
   },
   toastText: {color: '#FFFFFF', fontSize: 13, fontWeight: '600', textAlign: 'center'},
+
+  // ── Portfolio Gallery ─────────────────────────────────────
+  gallerySection:      {marginBottom: 28},
+  gallerySectionTitle: {color: '#C9956C', fontSize: 16, fontWeight: 'bold', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 20},
+  mediaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: GRID_GAP,
+  },
+  mediaCell:    {width: CELL_SIZE, height: CELL_SIZE},
+  mediaCellImg: {width: '100%', height: '100%'},
+
+  // ── Casting Profile ──────────────────────────────────────
+  availBadge: {
+    alignSelf: 'flex-start', borderRadius: 20, borderWidth: 1,
+    paddingHorizontal: 14, paddingVertical: 7, marginBottom: 14,
+  },
+  availBadgeText: {fontSize: 13, fontWeight: '700'},
+
+  castingBlock:  {marginBottom: 14},
+  castingLabel:  {color: '#A09080', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4},
+  castingValue:  {color: '#FFFFFF', fontSize: 14, lineHeight: 20},
+
+  castingTagRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14},
+  castingTag:    {backgroundColor: 'rgba(201,149,108,0.12)', borderRadius: 14, paddingVertical: 5, paddingHorizontal: 12, borderWidth: 1, borderColor: 'rgba(201,149,108,0.3)'},
+  castingTagText:{color: '#C9956C', fontSize: 12, fontWeight: '600'},
+
+  physicalRow:      {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
+  physicalChip:     {flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#141414', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#2A2A2A'},
+  physicalChipIcon: {fontSize: 14},
+  physicalChipText: {color: '#A09080', fontSize: 13},
+
+  // ── Social cards ─────────────────────────────────────────
+  socialCard: {
+    flexDirection: 'row', alignItems: 'center', borderRadius: 14,
+    padding: 14, marginBottom: 10, borderWidth: 1,
+  },
+  socialCardIG:      {backgroundColor: 'rgba(193,53,132,0.08)', borderColor: 'rgba(193,53,132,0.3)'},
+  socialCardYT:      {backgroundColor: 'rgba(255,0,0,0.06)',    borderColor: 'rgba(255,0,0,0.25)'},
+  socialCardIcon:    {fontSize: 22, marginRight: 12},
+  socialCardContent: {flex: 1},
+  socialCardPlatform:{color: '#FFFFFF', fontSize: 14, fontWeight: '700', marginBottom: 2},
+  socialCardUrl:     {color: '#A09080', fontSize: 12},
+  socialCardArrow:   {color: '#A09080', fontSize: 16, marginLeft: 8},
 });

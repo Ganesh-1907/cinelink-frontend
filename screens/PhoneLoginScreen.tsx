@@ -2,12 +2,11 @@ import React, {useState, useEffect, useRef} from 'react';
 import {
   View, Text, TextInput, StyleSheet,
   ScrollView, StatusBar, ActivityIndicator,
-  Alert, KeyboardAvoidingView, Platform, TouchableOpacity,
+  KeyboardAvoidingView, Platform, TouchableOpacity,
 } from 'react-native';
-import auth from '@react-native-firebase/auth';
+import auth, {FirebaseAuthTypes} from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import {LiquidPress} from '../components/LiquidPress';
-import {sendOTP, verifyOTP, resendOTP} from '../utils/msg91';
 
 const C = {
   background:   '#0A0A0A',
@@ -24,17 +23,40 @@ const C = {
   error:        '#EF4444',
 };
 
-const RESEND_COUNTDOWN = 30;
+const RESEND_COUNTDOWN = 60;
+
+const firebaseErrorMessage = (code: string): string => {
+  switch (code) {
+    case 'auth/invalid-phone-number':
+      return 'Invalid phone number. Please check and try again.';
+    case 'auth/invalid-verification-code':
+      return 'Incorrect OTP. Please check and try again.';
+    case 'auth/code-expired':
+      return 'OTP has expired. Please request a new one.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please wait a few minutes and try again.';
+    case 'auth/quota-exceeded':
+      return 'SMS limit reached. Please try again later.';
+    case 'auth/session-expired':
+      return 'Session expired. Please request a new OTP.';
+    case 'auth/missing-phone-number':
+      return 'Please enter a phone number.';
+    default:
+      return 'Something went wrong. Please try again.';
+  }
+};
 
 export default function PhoneLoginScreen({navigation}: any) {
-  const [phone, setPhone]             = useState('');
-  const [otp, setOtp]                 = useState('');
-  const [step, setStep]               = useState<'phone' | 'otp'>('phone');
-  const [sendingOtp, setSendingOtp]   = useState(false);
-  const [verifying, setVerifying]     = useState(false);
-  const [errorMsg, setErrorMsg]       = useState('');
-  const [countdown, setCountdown]     = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [phone, setPhone]           = useState('');
+  const [otp, setOtp]               = useState('');
+  const [step, setStep]             = useState<'phone' | 'otp'>('phone');
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifying, setVerifying]   = useState(false);
+  const [errorMsg, setErrorMsg]     = useState('');
+  const [countdown, setCountdown]   = useState(0);
+
+  const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
+  const confirmationRef = useRef<FirebaseAuthTypes.ConfirmationResult | null>(null);
 
   useEffect(() => {
     return () => {
@@ -56,6 +78,17 @@ export default function PhoneLoginScreen({navigation}: any) {
     }, 1000);
   };
 
+  const requestOTP = async (cleaned: string): Promise<boolean> => {
+    try {
+      const confirmation = await auth().signInWithPhoneNumber(`+91${cleaned}`);
+      confirmationRef.current = confirmation;
+      return true;
+    } catch (e: any) {
+      setErrorMsg(firebaseErrorMessage(e?.code));
+      return false;
+    }
+  };
+
   const handleSendOTP = async () => {
     setErrorMsg('');
     const cleaned = phone.replace(/\s/g, '');
@@ -64,64 +97,60 @@ export default function PhoneLoginScreen({navigation}: any) {
       return;
     }
     setSendingOtp(true);
-    const ok = await sendOTP(cleaned);
+    const ok = await requestOTP(cleaned);
     setSendingOtp(false);
     if (ok) {
       setStep('otp');
       startCountdown();
-    } else {
-      setErrorMsg('Failed to send OTP. Please check your number and try again.');
     }
   };
 
   const handleVerifyOTP = async () => {
     setErrorMsg('');
-    const cleaned = phone.replace(/\s/g, '');
     const otpCleaned = otp.replace(/\s/g, '');
     if (!/^\d{6}$/.test(otpCleaned)) {
       setErrorMsg('Please enter the 6-digit OTP sent to your number.');
       return;
     }
-    setVerifying(true);
-    const ok = await verifyOTP(cleaned, otpCleaned);
-    if (!ok) {
-      setVerifying(false);
-      setErrorMsg('Incorrect OTP. Please check and try again.');
+    if (!confirmationRef.current) {
+      setErrorMsg('Session lost. Please go back and request a new OTP.');
       return;
     }
+    setVerifying(true);
     try {
-      const result = await auth().signInAnonymously();
-      await firestore().collection('users').doc(result.user.uid).set({
-        uid:       result.user.uid,
-        phone:     `+91${cleaned}`,
-        role:      'Actor',
-        createdAt: firestore.FieldValue.serverTimestamp(),
-        isOnline:  true,
-        lastSeen:  firestore.FieldValue.serverTimestamp(),
-      }, {merge: true});
+      const result = await confirmationRef.current.confirm(otpCleaned);
+      if (result?.user) {
+        await firestore().collection('users').doc(result.user.uid).set({
+          uid:       result.user.uid,
+          phone:     result.user.phoneNumber,
+          role:      'Actor',
+          createdAt: firestore.FieldValue.serverTimestamp(),
+          isOnline:  true,
+          lastSeen:  firestore.FieldValue.serverTimestamp(),
+        }, {merge: true});
+      }
+      // App.tsx onAuthStateChanged auto-routes to MainStack
     } catch (e: any) {
       setVerifying(false);
-      setErrorMsg('Sign-in failed after OTP verification. Please try again.');
-      return;
+      setErrorMsg(firebaseErrorMessage(e?.code));
     }
-    setVerifying(false);
-    // App.tsx onAuthStateChanged will auto-route to MainStack
   };
 
   const handleResend = async () => {
     if (countdown > 0) return;
     setErrorMsg('');
     const cleaned = phone.replace(/\s/g, '');
-    const ok = await resendOTP(cleaned);
+    setSendingOtp(true);
+    const ok = await requestOTP(cleaned);
+    setSendingOtp(false);
     if (ok) {
       startCountdown();
-    } else {
-      setErrorMsg('Could not resend OTP. Please try again.');
     }
   };
 
   const handleChangeNumber = () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    confirmationRef.current = null;
     setStep('phone');
     setOtp('');
     setErrorMsg('');
@@ -228,12 +257,14 @@ export default function PhoneLoginScreen({navigation}: any) {
               <TouchableOpacity
                 style={styles.resendBtn}
                 onPress={handleResend}
-                disabled={countdown > 0}>
-                <Text style={[styles.resendText, countdown > 0 && styles.resendDisabled]}>
-                  {countdown > 0
-                    ? `Resend OTP in ${countdown}s`
-                    : 'Resend OTP'}
-                </Text>
+                disabled={countdown > 0 || sendingOtp}>
+                {sendingOtp ? (
+                  <ActivityIndicator size="small" color={C.primaryLight} />
+                ) : (
+                  <Text style={[styles.resendText, countdown > 0 && styles.resendDisabled]}>
+                    {countdown > 0 ? `Resend OTP in ${countdown}s` : 'Resend OTP'}
+                  </Text>
+                )}
               </TouchableOpacity>
             </>
           )}

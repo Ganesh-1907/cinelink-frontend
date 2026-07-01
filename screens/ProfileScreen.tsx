@@ -10,22 +10,39 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  Share,
+  Dimensions,
 } from 'react-native';
+import ImageViewing from 'react-native-image-viewing';
 import {launchImageLibrary, launchCamera, ImagePickerResponse} from 'react-native-image-picker';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import {useFocusEffect} from '@react-navigation/native';
 import ProfileCompletionCard from './ProfileCompletionCard';
+import {usePremiumStatus} from '../hooks/usePremiumStatus';
+import PremiumBadge from '../src/components/Premium/PremiumBadge';
 
-const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
-const CLOUD_NAME = 'dipwobgzb';
+const ADMIN_EMAIL   = 'anilkumardevarakonda03@gmail.com';
+const CLOUD_NAME    = 'dipwobgzb';
 const UPLOAD_PRESET = 'cinelink_upload';
+
+const SCREEN_W  = Dimensions.get('window').width;
+const GRID_GAP  = 2;
+const CELL_SIZE = Math.floor((SCREEN_W - 40 - GRID_GAP * 2) / 3);
 
 interface PhotoAsset {
   uri: string;
   type?: string;
   name?: string;
 }
+
+const ROLE_TAGS = ['Lead', 'Supporting', 'Character', 'Theatre', 'Film', 'OTT', 'Web Series', 'Ad Film'];
+
+const availColor = (status: string) => {
+  if (status === 'Available Now') return {bg: 'rgba(74,222,128,0.15)', border: '#4ADE80', text: '#4ADE80'};
+  if (status === 'Booked')        return {bg: 'rgba(251,191,36,0.15)',  border: '#FBBF24', text: '#FBBF24'};
+  return                                 {bg: 'rgba(160,144,128,0.15)', border: '#A09080', text: '#A09080'};
+};
 
 export default function ProfileScreen({navigation}: any) {
   const [name, setName]                     = useState<string>('');
@@ -48,8 +65,27 @@ export default function ProfileScreen({navigation}: any) {
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
 
+  // Gallery
+  const [portfolioMedia, setPortfolioMedia]   = useState<string[]>([]);
+  const [mediaUploading, setMediaUploading]   = useState(false);
+  const [galleryVisible, setGalleryVisible]   = useState(false);
+  const [galleryIndex, setGalleryIndex]       = useState(0);
+
+  // Portfolio v2
+  const [availabilityStatus, setAvailabilityStatus] = useState<string>('');
+  const [lookingFor, setLookingFor]                 = useState<string>('');
+  const [profileTags, setProfileTags]               = useState<string[]>([]);
+  const [instagramLink, setInstagramLink]           = useState<string>('');
+  const [youtubeLink, setYoutubeLink]               = useState<string>('');
+  const [ageRange, setAgeRange]                     = useState<string>('');
+  const [height, setHeight]                         = useState<string>('');
+  const [bodyType, setBodyType]                     = useState<string>('');
+
   const scrollRef = useRef<ScrollView>(null);
   const user = auth().currentUser;
+  const {tier: premiumTier, isVerified: premiumVerifiedReal} = usePremiumStatus();
+  const toggleTag = (tag: string) =>
+    setProfileTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -88,6 +124,15 @@ export default function ProfileScreen({navigation}: any) {
         setPortfolioPhotos(data?.portfolioPhotos || []);
         setVerificationStatus(data?.verificationStatus || '');
         setLocation(data?.location || '');
+        setAvailabilityStatus(data?.availabilityStatus || '');
+        setLookingFor(data?.lookingFor || '');
+        setProfileTags(data?.profileTags || []);
+        setInstagramLink(data?.instagramLink || '');
+        setYoutubeLink(data?.youtubeLink || '');
+        setAgeRange(data?.ageRange || '');
+        setHeight(data?.height || '');
+        setBodyType(data?.bodyType || '');
+        setPortfolioMedia(data?.portfolioMedia || []);
       }
     } catch (e) {
       console.error('Error loading profile:', e);
@@ -237,6 +282,14 @@ export default function ProfileScreen({navigation}: any) {
         portfolioPhotos: allPortfolioPhotos,
         email: user?.email,
         verificationStatus,
+        availabilityStatus,
+        lookingFor,
+        profileTags,
+        instagramLink,
+        youtubeLink,
+        ageRange,
+        height,
+        bodyType,
         updatedAt: firestore.FieldValue.serverTimestamp(),
       };
 
@@ -288,6 +341,59 @@ export default function ProfileScreen({navigation}: any) {
     }
   };
 
+  // ── Gallery helpers ──────────────────────────────────────
+  const saveMediaToFirestore = async (media: string[]) => {
+    if (!user?.uid) return;
+    await firestore().collection('users').doc(user.uid).set({portfolioMedia: media}, {merge: true});
+  };
+
+  const pickPortfolioMedia = () => {
+    if (portfolioMedia.length >= 20) {
+      Alert.alert('Limit Reached', 'Portfolio gallery is limited to 20 images.');
+      return;
+    }
+    launchImageLibrary({mediaType: 'photo', quality: 0.8, selectionLimit: 1}, async response => {
+      if (!response.assets?.[0]?.uri) return;
+      setMediaUploading(true);
+      try {
+        const url = await uploadToCloudinary(response.assets[0].uri);
+        const updated = [...portfolioMedia, url];
+        setPortfolioMedia(updated);
+        await saveMediaToFirestore(updated);
+      } catch {
+        Alert.alert('Upload Failed', 'Could not upload image. Please try again.');
+      } finally {
+        setMediaUploading(false);
+      }
+    });
+  };
+
+  const removeMediaItem = (index: number) => {
+    Alert.alert('Remove Photo', 'Remove this photo from your gallery?', [
+      {text: 'Cancel', style: 'cancel'},
+      {
+        text: 'Remove', style: 'destructive',
+        onPress: async () => {
+          const updated = portfolioMedia.filter((_, i) => i !== index);
+          setPortfolioMedia(updated);
+          await saveMediaToFirestore(updated);
+        },
+      },
+    ]);
+  };
+
+  const handleShare = async () => {
+    const shareName = name || user?.email?.split('@')[0] || 'my profile';
+    try {
+      await Share.share({
+        message:
+          `Check out ${shareName} on CineLink!\n\n` +
+          `They're a ${role} on CineLink — India's casting & film collaboration platform.\n\n` +
+          `Download CineLink to view their full profile and connect! 🎬`,
+      });
+    } catch (_) {}
+  };
+
   const scrollToForm = () => {
     scrollRef.current?.scrollTo({y: 420, animated: true});
   };
@@ -296,6 +402,7 @@ export default function ProfileScreen({navigation}: any) {
   const displayName = name || user?.email?.split('@')[0] || 'Me';
 
   return (
+    <>
     <ScrollView ref={scrollRef} style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
@@ -332,8 +439,16 @@ export default function ProfileScreen({navigation}: any) {
           </View>
         )}
 
-        {name ? <Text style={styles.profileName}>{name}</Text> : null}
+        {name ? (
+          <View style={styles.nameRow}>
+            <Text style={styles.profileName}>{name}</Text>
+            <PremiumBadge tier={premiumTier} verifiedReal={premiumVerifiedReal} size="large" />
+          </View>
+        ) : null}
         <Text style={styles.email}>{user?.email || user?.phoneNumber}</Text>
+        <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
+          <Text style={styles.shareBtnText}>↗ Share Profile</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── FOLLOWERS / FOLLOWING STATS ── */}
@@ -459,6 +574,38 @@ export default function ProfileScreen({navigation}: any) {
           )}
         </ScrollView>
 
+        {/* ── PORTFOLIO GALLERY ── */}
+        <Text style={styles.sectionTitle}>Portfolio Gallery</Text>
+        <Text style={styles.hint}>
+          {portfolioMedia.length}/20 · Tap to view · Long-press to remove
+        </Text>
+        <View style={styles.mediaGrid}>
+          {portfolioMedia.map((url, i) => (
+            <TouchableOpacity
+              key={i}
+              style={styles.mediaCell}
+              onPress={() => { setGalleryIndex(i); setGalleryVisible(true); }}
+              onLongPress={() => removeMediaItem(i)}
+              activeOpacity={0.85}>
+              <Image source={{uri: url}} style={styles.mediaCellImg} resizeMode="cover" />
+            </TouchableOpacity>
+          ))}
+          {portfolioMedia.length < 20 && (
+            <TouchableOpacity
+              style={[styles.mediaCell, styles.mediaCellAdd]}
+              onPress={pickPortfolioMedia}
+              disabled={mediaUploading}
+              activeOpacity={0.7}>
+              {mediaUploading
+                ? <ActivityIndicator color="#C9956C" size="small" />
+                : <>
+                    <Text style={styles.mediaCellPlus}>+</Text>
+                    <Text style={styles.mediaCellAddText}>Add</Text>
+                  </>}
+            </TouchableOpacity>
+          )}
+        </View>
+
         <Text style={styles.sectionTitle}>Intro Video</Text>
         <TextInput
           style={styles.input}
@@ -489,6 +636,99 @@ export default function ProfileScreen({navigation}: any) {
           placeholderTextColor="#A09080"
           value={portfolio3}
           onChangeText={setPortfolio3}
+        />
+
+        {/* ── CASTING PROFILE ── */}
+        <Text style={styles.sectionTitle}>Casting Profile</Text>
+
+        <Text style={styles.label}>Availability</Text>
+        <View style={styles.chipRow}>
+          {(['Available Now', 'Booked', 'Not Looking'] as const).map(status => {
+            const c = availColor(status);
+            const isActive = availabilityStatus === status;
+            return (
+              <TouchableOpacity
+                key={status}
+                style={[styles.availChip, isActive && {backgroundColor: c.bg, borderColor: c.border}]}
+                onPress={() => setAvailabilityStatus(prev => prev === status ? '' : status)}>
+                <Text style={[styles.availChipText, isActive && {color: c.text}]}>
+                  {status === 'Available Now' ? '🟢' : status === 'Booked' ? '🟡' : '🔴'}{' '}{status}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.label}>Looking For</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Lead roles in short films, OTT projects"
+          placeholderTextColor="#A09080"
+          value={lookingFor}
+          onChangeText={setLookingFor}
+        />
+
+        <Text style={styles.label}>Profile Type Tags</Text>
+        <View style={styles.tagGrid}>
+          {ROLE_TAGS.map(tag => (
+            <TouchableOpacity
+              key={tag}
+              style={[styles.tagChip, profileTags.includes(tag) && styles.tagChipActive]}
+              onPress={() => toggleTag(tag)}>
+              <Text style={[styles.tagChipText, profileTags.includes(tag) && styles.tagChipTextActive]}>
+                {tag}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>Instagram Profile URL</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="https://instagram.com/yourhandle"
+          placeholderTextColor="#A09080"
+          value={instagramLink}
+          onChangeText={setInstagramLink}
+          autoCapitalize="none"
+          keyboardType="url"
+        />
+
+        <Text style={styles.label}>YouTube Channel URL</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="https://youtube.com/@yourchannel"
+          placeholderTextColor="#A09080"
+          value={youtubeLink}
+          onChangeText={setYoutubeLink}
+          autoCapitalize="none"
+          keyboardType="url"
+        />
+
+        <Text style={styles.label}>Age Range</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. 22–28"
+          placeholderTextColor="#A09080"
+          value={ageRange}
+          onChangeText={setAgeRange}
+        />
+
+        <Text style={styles.label}>Height</Text>
+        <TextInput
+          style={styles.input}
+          placeholder={'e.g. 5\'10" / 178 cm'}
+          placeholderTextColor="#A09080"
+          value={height}
+          onChangeText={setHeight}
+        />
+
+        <Text style={styles.label}>Body Type</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Athletic, Slim, Average"
+          placeholderTextColor="#A09080"
+          value={bodyType}
+          onChangeText={setBodyType}
         />
 
         <TouchableOpacity
@@ -565,6 +805,16 @@ export default function ProfileScreen({navigation}: any) {
         </View>
       </View>
     </ScrollView>
+    <ImageViewing
+      images={portfolioMedia.map(url => ({uri: url}))}
+      imageIndex={galleryIndex}
+      visible={galleryVisible}
+      onRequestClose={() => setGalleryVisible(false)}
+      swipeToCloseEnabled
+      doubleTapToZoomEnabled
+      backgroundColor="black"
+    />
+  </>
   );
 }
 
@@ -595,7 +845,8 @@ const styles = StyleSheet.create({
   verifiedBadgeText: {color: '#6EE7B7', fontSize: 13, fontWeight: 'bold'},
   uploadingRow:  {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8},
   uploadingText: {color: '#C9956C', fontSize: 12},
-  profileName:   {color: '#FFFFFF', fontSize: 20, fontWeight: 'bold', marginTop: 10, marginBottom: 4},
+  nameRow:       {flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, marginBottom: 4},
+  profileName:   {color: '#FFFFFF', fontSize: 20, fontWeight: 'bold'},
   email:         {color: '#A09080', fontSize: 13, marginTop: 2},
 
   // ── Followers / Following ──
@@ -683,4 +934,53 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#C9956C',
   },
   adminCardText: {color: '#C9956C', fontSize: 16, fontWeight: 'bold', flex: 1},
+
+  shareBtn: {
+    marginTop: 10, paddingVertical: 8, paddingHorizontal: 22,
+    borderRadius: 20, borderWidth: 1, borderColor: 'rgba(201,149,108,0.4)',
+  },
+  shareBtnText: {color: '#C9956C', fontSize: 13, fontWeight: '600'},
+
+  // ── Portfolio Gallery ─────────────────────────────────────
+  mediaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: GRID_GAP,
+    marginTop: 10,
+    marginBottom: 16,
+  },
+  mediaCell: {
+    width: CELL_SIZE,
+    height: CELL_SIZE,
+  },
+  mediaCellImg: {
+    width: '100%',
+    height: '100%',
+  },
+  mediaCellAdd: {
+    backgroundColor: '#1C1C1C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  mediaCellPlus:   {color: '#C9956C', fontSize: 28, fontWeight: 'bold', lineHeight: 32},
+  mediaCellAddText:{color: '#A09080', fontSize: 11, marginTop: 2},
+
+  // ── Casting Profile ──────────────────────────────────────
+  chipRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16},
+  availChip: {
+    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20,
+    backgroundColor: '#1C1C1C', borderWidth: 1, borderColor: '#2A2A2A',
+  },
+  availChipText: {color: '#A09080', fontSize: 13, fontWeight: '600'},
+
+  tagGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16},
+  tagChip: {
+    paddingVertical: 7, paddingHorizontal: 14, borderRadius: 16,
+    backgroundColor: '#1C1C1C', borderWidth: 1, borderColor: '#2A2A2A',
+  },
+  tagChipActive:     {backgroundColor: 'rgba(201,149,108,0.15)', borderColor: '#C9956C'},
+  tagChipText:       {color: '#A09080', fontSize: 13},
+  tagChipTextActive: {color: '#C9956C', fontWeight: '600'},
 });

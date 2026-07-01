@@ -475,9 +475,9 @@ const styles = StyleSheet.create({
   descText: {color: '#A09080', fontSize: 13, lineHeight: 20, marginBottom: 10},
   applyBtn: {
     backgroundColor: '#C9956C', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 4,
-    borderTopWidth: 2, borderTopColor: '#E8C4A0',
-    borderBottomWidth: 2, borderBottomColor: '#7A5535',
-    borderLeftWidth: 0, borderRightWidth: 0,
+    borderWidth: 1, borderTopColor: '#E8C4A0',
+    borderBottomColor: '#7A5535', borderLeftColor: 'rgba(232,196,160,0.45)',
+    borderRightColor: 'rgba(122,85,53,0.45)',
     shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4},
     shadowOpacity: 0.35, shadowRadius: 12, elevation: 8,
   },
@@ -487,7 +487,7 @@ const styles = StyleSheet.create({
   emptyEmoji: {fontSize: 60, marginBottom: 16},
   emptyTitle: {color: '#FFFFFF', fontSize: 20, fontWeight: 'bold', marginBottom: 8},
   emptyText: {color: '#A09080', fontSize: 14, textAlign: 'center', paddingHorizontal: 40},
-  emptyBtn: {marginTop: 24, backgroundColor: '#C9956C', borderRadius: 25, paddingVertical: 12, paddingHorizontal: 28, borderTopWidth: 2, borderTopColor: '#E8C4A0', borderBottomWidth: 2, borderBottomColor: '#7A5535', elevation: 6},
+  emptyBtn: {marginTop: 24, backgroundColor: '#C9956C', borderRadius: 25, paddingVertical: 12, paddingHorizontal: 28, borderWidth: 1, borderTopColor: '#E8C4A0', borderBottomColor: '#7A5535', borderLeftColor: 'rgba(232,196,160,0.45)', borderRightColor: 'rgba(122,85,53,0.45)', elevation: 6},
   emptyBtnText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
 
   deleteBtn: {

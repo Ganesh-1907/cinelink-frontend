@@ -116,7 +116,13 @@ export default function PremiumCineLinkScreen({navigation}: any) {
           [{text: 'Done', onPress: () => navigation.goBack()}],
         );
       } else if (result.status === 'error') {
-        Alert.alert('Payment Failed', result.message);
+        // Suppress the "not yet configured" error silently — the subscription
+        // backend hasn't been deployed yet; showing a payment-failure Alert
+        // when the user hasn't even seen a checkout is confusing.
+        const isConfigError = result.message.includes('not yet configured');
+        if (!isConfigError) {
+          Alert.alert('Payment Failed', result.message);
+        }
       }
       // status === 'cancelled': user dismissed checkout, do nothing
     } finally {

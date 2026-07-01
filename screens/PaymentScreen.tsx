@@ -1,27 +1,24 @@
-﻿import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, ActivityIndicator, Alert,
-  TextInput, Linking,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 // @ts-ignore
 import RazorpayCheckout from 'react-native-razorpay';
 
-// ✅ Change to rzp_live_XXXXXXXXXX for real payments
-const RAZORPAY_KEY = 'rzp_test_SuJZOYDYUYgzIY';
+const RAZORPAY_KEY = 'rzp_live_T7rczRVuHeMGXj';
+
+const sanitizeForRazorpay = (text: string) =>
+  text.replace(/[^\x20-\x7E]/g, '').trim().substring(0, 255);
 
 export default function PaymentScreen({route, navigation}: any) {
   const {amount, purpose, itemId, itemTitle, videoLink} = route.params;
   const [loading, setLoading] = useState(false);
   const [alreadyPaid, setAlreadyPaid] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(true);
-  const [upiTxId, setUpiTxId] = useState('');
-  const [upiLoading, setUpiLoading] = useState(false);
   const user = auth().currentUser;
-
-  const upiLink = `upi://pay?pa=6303258563-n221-2@ybl&pn=CineLink&am=${amount}&cu=INR`;
 
   const amountPaise = amount * 100; // No GST — flat amount only
   const currentUserName =
@@ -105,9 +102,15 @@ export default function PaymentScreen({route, navigation}: any) {
             transactionId,
             createdAt: firestore.FieldValue.serverTimestamp(),
           });
-          await firestore().collection('contests').doc(itemId).update({
-            entriesCount: firestore.FieldValue.increment(1),
-          });
+          // Non-fatal: contests rule currently restricts this to admins.
+          // Entry is already saved above; counter mismatch can be fixed via admin.
+          try {
+            await firestore().collection('contests').doc(itemId).update({
+              entriesCount: firestore.FieldValue.increment(1),
+            });
+          } catch (counterErr: any) {
+            console.log('ENTRIES_COUNT_UPDATE_ERROR code:', counterErr?.code, 'msg:', counterErr?.message);
+          }
         }
       }
 
@@ -121,61 +124,16 @@ export default function PaymentScreen({route, navigation}: any) {
         [{text: 'OK', onPress: () => navigation.goBack()}],
       );
     } catch (e: any) {
+      console.log('HANDLE_PAYMENT_SUCCESS_ERROR', JSON.stringify({
+        code: e?.code,
+        message: e?.message,
+        name: e?.name,
+        transactionId,
+      }, null, 2));
       Alert.alert(
         'Payment Done!',
         'Payment successful but could not save entry. Contact support with Transaction ID: ' + transactionId,
       );
-    }
-  };
-
-  /* ── UPI FALLBACK ── */
-  const handleUpiSubmit = async () => {
-    if (!upiTxId.trim()) {
-      Alert.alert('Missing ID', 'Please enter your UPI transaction ID.');
-      return;
-    }
-    setUpiLoading(true);
-    try {
-      await savePayment(upiTxId.trim(), 'success');
-
-      if (purpose === 'contest_entry') {
-        const existing = await firestore()
-          .collection('contestEntries')
-          .where('contestId', '==', itemId)
-          .where('userId', '==', user?.uid)
-          .get();
-
-        if (existing.empty) {
-          await firestore().collection('contestEntries').add({
-            contestId: itemId,
-            contestTitle: itemTitle,
-            userId: user?.uid,
-            userEmail: user?.email,
-            userName: currentUserName,
-            videoLink: videoLink || '',
-            votes: 0,
-            juryScore: 0,
-            finalScore: 0,
-            paid: true,
-            upiTransactionId: upiTxId.trim(),
-            verified: false,
-            createdAt: firestore.FieldValue.serverTimestamp(),
-          });
-          await firestore().collection('contests').doc(itemId).update({
-            entriesCount: firestore.FieldValue.increment(1),
-          });
-        }
-      }
-
-      Alert.alert(
-        '✅ Entry Submitted!',
-        `UPI Transaction ID: ${upiTxId.trim()}\n\nWe'll verify your payment within 24 hours and confirm your spot.`,
-        [{text: 'OK', onPress: () => navigation.goBack()}],
-      );
-    } catch (e: any) {
-      Alert.alert('Error', 'Could not save your entry. Please contact support with your transaction ID.');
-    } finally {
-      setUpiLoading(false);
     }
   };
 
@@ -188,7 +146,7 @@ export default function PaymentScreen({route, navigation}: any) {
     setLoading(true);
 
     const options = {
-      description: itemTitle,
+      description: sanitizeForRazorpay(itemTitle),
       currency: 'INR',
       key: RAZORPAY_KEY,
       amount: amountPaise,
@@ -201,6 +159,8 @@ export default function PaymentScreen({route, navigation}: any) {
       theme: {color: '#C9956C'},
     };
 
+    console.log('RAZORPAY OPTIONS');
+    console.log(JSON.stringify(options, null, 2));
     RazorpayCheckout.open(options)
       .then(async (data: any) => {
         await handlePaymentSuccess(data.razorpay_payment_id);
@@ -210,9 +170,13 @@ export default function PaymentScreen({route, navigation}: any) {
         setLoading(false);
         if (error.code === 2) return; // user cancelled
         await savePayment('FAILED_' + Date.now(), 'failed');
+        console.log('========================');
+        console.log('RAZORPAY ERROR');
+        console.log(JSON.stringify(error, null, 2));
+        console.log('========================');
         Alert.alert(
           '❌ Payment Failed',
-          (error.description || 'Something went wrong.') + '\n\nYou can pay via UPI instead.',
+          error.description || 'Something went wrong. Please try again.',
         );
       });
   };
@@ -304,57 +268,6 @@ export default function PaymentScreen({route, navigation}: any) {
           </TouchableOpacity>
         )}
 
-        {/* ── UPI FALLBACK ── */}
-        <View style={styles.upiDividerRow}>
-          <View style={styles.upiDividerLine} />
-          <Text style={styles.upiDividerText}>or</Text>
-          <View style={styles.upiDividerLine} />
-        </View>
-
-        <View style={styles.upiCard}>
-          <Text style={styles.upiCardTitle}>📲 Pay via UPI</Text>
-          <Text style={styles.upiCardDesc}>
-            Open your UPI app, pay ₹{amount} to the ID below, then paste your transaction ID here.
-          </Text>
-          <Text style={styles.upiId}>UPI ID: 6303258563-n221-2@ybl</Text>
-
-          <TouchableOpacity
-            style={styles.upiOpenBtn}
-            onPress={() =>
-              Linking.openURL(upiLink).catch(() =>
-                Alert.alert('Could not open UPI app', 'Please open PhonePe / GPay manually and pay to the UPI ID above.'),
-              )
-            }>
-            <Text style={styles.upiOpenBtnText}>📱 Open UPI App</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.upiInputLabel}>Enter UPI Transaction ID</Text>
-          <TextInput
-            style={styles.upiInput}
-            placeholder="e.g. 4059382716534"
-            placeholderTextColor="#5C5048"
-            value={upiTxId}
-            onChangeText={setUpiTxId}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-
-          <TouchableOpacity
-            style={[styles.upiSubmitBtn, (!upiTxId.trim() || upiLoading) && styles.upiSubmitBtnDisabled]}
-            onPress={handleUpiSubmit}
-            disabled={!upiTxId.trim() || upiLoading}>
-            {upiLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.upiSubmitBtnText}>✅ Submit Entry with UPI</Text>
-            )}
-          </TouchableOpacity>
-
-          <Text style={styles.upiNote}>
-            Your entry will be marked pending until we verify the payment (within 24 hrs).
-          </Text>
-        </View>
-
       </View>
     </ScrollView>
   );
@@ -403,45 +316,6 @@ const styles = StyleSheet.create({
   payBtnDisabled: {opacity: 0.6},
   payBtnRow: {flexDirection: 'row', alignItems: 'center'},
   payBtnText: {color: '#FFFFFF', fontSize: 18, fontWeight: 'bold'},
-  testNote: {color: '#A09080', fontSize: 12, textAlign: 'center'},
-
-  // ── UPI fallback ─────────────────────────────────────────────
-  upiDividerRow: {flexDirection: 'row', alignItems: 'center', marginTop: 24, marginBottom: 12, gap: 10},
-  upiDividerLine: {flex: 1, height: 1, backgroundColor: '#2A2A2A'},
-  upiDividerText: {color: '#5C5048', fontSize: 13},
-
-  upiCard: {
-    backgroundColor: '#1C1C1C', borderRadius: 16, padding: 18,
-    borderWidth: 1, borderColor: '#2A2A2A', marginTop: 4,
-  },
-  upiCardTitle: {color: '#FFFFFF', fontSize: 16, fontWeight: 'bold', marginBottom: 6},
-  upiCardDesc: {color: '#A09080', fontSize: 13, lineHeight: 20, marginBottom: 12},
-  upiId: {color: '#C9956C', fontSize: 14, fontWeight: '700', marginBottom: 14},
-
-  upiOpenBtn: {
-    backgroundColor: '#25D366', borderRadius: 12,
-    paddingVertical: 12, alignItems: 'center', marginBottom: 18,
-  },
-  upiOpenBtnText: {color: '#FFFFFF', fontSize: 15, fontWeight: 'bold'},
-
-  upiInputLabel: {color: '#C9956C', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8},
-  upiInput: {
-    backgroundColor: '#242424', borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 13,
-    color: '#FFFFFF', fontSize: 15,
-    borderWidth: 1, borderColor: '#3A3A3A',
-    marginBottom: 14,
-  },
-
-  upiSubmitBtn: {
-    backgroundColor: '#C9956C', borderRadius: 12,
-    paddingVertical: 14, alignItems: 'center',
-  },
-  upiSubmitBtnDisabled: {opacity: 0.45},
-  upiSubmitBtnText: {color: '#FFFFFF', fontSize: 15, fontWeight: 'bold'},
-
-  upiNote: {color: '#5C5048', fontSize: 12, textAlign: 'center', marginTop: 12, lineHeight: 18},
-
   noticeBanner: {
     borderWidth: 1, borderColor: '#C9956C', borderRadius: 12,
     backgroundColor: 'rgba(201,149,108,0.08)',

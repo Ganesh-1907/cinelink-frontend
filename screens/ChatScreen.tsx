@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import {LiquidPress} from '../components/LiquidPress';
 import Clipboard from '@react-native-clipboard/clipboard';
+import PremiumBadge from '../src/components/Premium/PremiumBadge';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import {launchImageLibrary} from 'react-native-image-picker';
@@ -49,9 +50,11 @@ export default function ChatScreen({route, navigation}: any) {
   const [loading,         setLoading]         = useState(true);
   const [otherUserTyping, setOtherUserTyping] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [otherUserOnline, setOtherUserOnline] = useState(false);
-  const [otherUserName,   setOtherUserName]   = useState(initialHeaderName);
-  const [otherUserPhoto,  setOtherUserPhoto]  = useState<string | null>(null);
+  const [otherUserOnline, setOtherUserOnline]           = useState(false);
+  const [otherUserName,   setOtherUserName]             = useState(initialHeaderName);
+  const [otherUserPhoto,  setOtherUserPhoto]            = useState<string | null>(null);
+  const [otherUserTier,   setOtherUserTier]             = useState<string>('none');
+  const [otherUserVerifiedReal, setOtherUserVerifiedReal] = useState(false);
 
   // ── Reply state ──────────────────────────────────────────────
   const [replyTo, setReplyTo] = useState<any>(null);
@@ -113,6 +116,8 @@ export default function ChatScreen({route, navigation}: any) {
         setOtherUserPhoto(photo);
         const freshName = data.fullName || data.displayName || data.name || data.email;
         if (freshName) setOtherUserName(cleanName(freshName));
+        setOtherUserTier(data.premiumTier || 'none');
+        setOtherUserVerifiedReal(data.verifiedReal === true);
         const lastSeen = data.lastSeen?.toDate?.();
         const isOnlineFlag = data.isOnline || false;
         if (isOnlineFlag && lastSeen) {
@@ -496,7 +501,10 @@ const unsendMessage = async (messageId: string) => {
               Alert.alert('Profile unavailable', 'Could not open profile — user data missing.');
             }
           }}>
-          <Text style={styles.headerName}>{otherUserName}</Text>
+          <View style={styles.headerNameRow}>
+            <Text style={styles.headerName}>{otherUserName}</Text>
+            <PremiumBadge tier={otherUserTier} verifiedReal={otherUserVerifiedReal} size="small" />
+          </View>
           <Text style={[
             styles.headerStatus,
             {color: otherUserTyping ? '#FBBF24' : otherUserOnline ? '#4ADE80' : '#A09080'},
@@ -632,6 +640,7 @@ const styles = StyleSheet.create({
   headerPhoto: {width: 42, height: 42, borderRadius: 21},
   profileInitial: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 17},
   headerInfo: {flex: 1},
+  headerNameRow: {flexDirection: 'row', alignItems: 'center', gap: 5},
   headerName: {color: '#FFFFFF', fontSize: 16, fontWeight: 'bold'},
   headerStatus: {fontSize: 12, marginTop: 1},
   loadingContainer: {flex: 1, justifyContent: 'center', alignItems: 'center'},
@@ -723,7 +732,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 8, paddingVertical: 8,
     backgroundColor: '#141414',
-    borderTopWidth: 2, borderTopColor: '#C9956C44', gap: 6,
+    borderTopWidth: 1, borderTopColor: '#C9956C33', gap: 6,
   },
   iconBtn: {padding: 6},
   emojiButton: {fontSize: 24},
@@ -739,10 +748,15 @@ const styles = StyleSheet.create({
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: '#C9956C',
     justifyContent: 'center', alignItems: 'center',
-    borderTopWidth: 2, borderTopColor: '#E8C4A0',
-    borderBottomWidth: 2, borderBottomColor: '#7A5535',
-    shadowColor: '#C9956C', shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.35, shadowRadius: 12, elevation: 8,
+    // Uniform borderWidth avoids the arc-cut artifact where asymmetric
+    // top/bottom-only borders terminate at the 9 and 3 o'clock positions.
+    borderWidth: 1.5,
+    borderTopColor: '#E8C4A0',
+    borderBottomColor: '#7A5535',
+    borderLeftColor: 'rgba(232,196,160,0.45)',
+    borderRightColor: 'rgba(122,85,53,0.45)',
+    shadowColor: '#C9956C', shadowOffset: {width: 0, height: 3},
+    shadowOpacity: 0.5, shadowRadius: 10, elevation: 8,
   },
   sendButtonDisabled: {opacity: 0.4},
   sendIcon: {color: '#FFFFFF', fontSize: 18, fontWeight: 'bold'},

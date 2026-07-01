@@ -40,6 +40,18 @@ export async function initiateSubscriptionCheckout(
   tier: Exclude<PremiumTier, 'none' | 'black'>,
   userId: string,
 ): Promise<SubscriptionCheckoutResult> {
+  // Guard: refuse immediately if the Cloud Function URL is still the placeholder.
+  // Without this, fetch() resolves to a GCP generic endpoint, returns a non-OK
+  // response, and the function returns status:'error' — which the caller surfaces
+  // as an Alert that appears to pop up automatically on screen load.
+  if (CREATE_SUBSCRIPTION_FUNCTION_URL.includes('REPLACE_WITH_YOUR_PROJECT_ID')) {
+    return {
+      status: 'error',
+      message:
+        'Subscription service is not yet configured. Please contact support or check back later.',
+    };
+  }
+
   const user = auth().currentUser;
   if (!user) {
     return {status: 'error', message: 'You must be logged in to subscribe.'};

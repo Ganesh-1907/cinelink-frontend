@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, TouchableOpacity, Text} from 'react-native';
+import {View, TouchableOpacity, Text, StyleSheet} from 'react-native';
 
 const TABS = [
   {icon: '🏠', label: 'Home', screen: 'Home'},
@@ -14,8 +14,8 @@ export function LiquidNav({navigation, activeTab}: any) {
     <View style={{
       flexDirection: 'row',
       backgroundColor: '#0A0A0A',
-      borderTopWidth: 1,
-      borderTopColor: 'rgba(201,149,108,0.2)',
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: 'rgba(201,149,108,0.45)',
       paddingBottom: 10,
       paddingTop: 8,
     }}>

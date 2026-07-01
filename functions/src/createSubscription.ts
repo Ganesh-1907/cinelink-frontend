@@ -1,6 +1,5 @@
 import {onCall, HttpsError} from 'firebase-functions/v2/https';
-// TODO Step A: uncomment after running  npm install  inside /functions
-// import Razorpay from 'razorpay';
+import Razorpay from 'razorpay';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RAZORPAY PLAN IDs  ← one-time manual setup, see instructions below
@@ -19,10 +18,10 @@ import {onCall, HttpsError} from 'firebase-functions/v2/https';
 // Use TEST mode plan IDs until Razorpay activates your live account.
 // ─────────────────────────────────────────────────────────────────────────────
 const TIER_PLAN_IDS: Record<string, string> = {
-  spotlight:    'plan_REPLACE_WITH_SPOTLIGHT_PLAN_ID',
-  marquee:      'plan_REPLACE_WITH_MARQUEE_PLAN_ID',
-  premiere:     'plan_REPLACE_WITH_PREMIERE_PLAN_ID',
-  premiereElite: 'plan_REPLACE_WITH_PREMIERE_ELITE_PLAN_ID',
+  spotlight:    'plan_T79TclEwk342h5',
+  marquee:      'plan_T79YHTe84YkAZt',
+  premiere:     'plan_T79Yu7hDIJWKKO',
+  premiereElite: 'plan_T79Zlz9XoAR9lt',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,37 +77,33 @@ export const createRazorpaySubscription = onCall<CreateSubscriptionData>(
     const planId = TIER_PLAN_IDS[tier];
     console.log(`[createRazorpaySubscription] Creating subscription — tier=${tier}, userId=${userId}, planId=${planId}`);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // TODO Step B: Replace this stub with the real Razorpay API call.
-    //
-    // Prerequisites:
-    //   1. Complete Step A (npm install in /functions)
-    //   2. Fill in TIER_PLAN_IDS above with real plan_XXXX IDs from the Dashboard
-    //   3. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET (see instructions above)
-    //
-    // Then replace everything below the TODO with:
-    //
-    //   const razorpay = new Razorpay({
-    //     key_id:     RAZORPAY_KEY_ID,
-    //     key_secret: RAZORPAY_KEY_SECRET,
-    //   });
-    //
-    //   const subscription = await razorpay.subscriptions.create({
-    //     plan_id:         planId,
-    //     total_count:     1,   // 1 billing cycle (user renews manually or auto-renews)
-    //     quantity:        1,
-    //     customer_notify: 1,   // Razorpay emails the customer on charge
-    //     notes:           {userId, tier},
-    //   });
-    //
-    //   console.log('[createRazorpaySubscription] Created:', subscription.id);
-    //   return {subscriptionId: subscription.id};
-    //
-    // ─────────────────────────────────────────────────────────────────────────
+    const razorpay = new Razorpay({
+      key_id:     RAZORPAY_KEY_ID,
+      key_secret: RAZORPAY_KEY_SECRET,
+    });
 
-    throw new HttpsError(
-      'unimplemented',
-      'Razorpay subscription creation is a stub. Complete the TODOs in functions/src/createSubscription.ts.',
-    );
+    let subscription: {id: string};
+    try {
+      subscription = await razorpay.subscriptions.create({
+        plan_id:         planId,
+        // total_count controls how many billing cycles Razorpay auto-renews before
+        // requiring re-authorization from the customer. 12 covers a full year for
+        // monthly plans; yearly plans will simply end after 1 cycle anyway.
+        total_count:     12,
+        quantity:        1,
+        customer_notify: 1,
+        notes:           {userId, tier},
+      });
+    } catch (err: unknown) {
+      const rzpErr = err as {error?: {description?: string}; message?: string};
+      console.error('[createRazorpaySubscription] Razorpay API error:', err);
+      throw new HttpsError(
+        'internal',
+        `Failed to create Razorpay subscription: ${rzpErr?.error?.description ?? rzpErr?.message ?? 'Unknown error'}`,
+      );
+    }
+
+    console.log('[createRazorpaySubscription] Created:', subscription.id);
+    return {subscriptionId: subscription.id, keyId: RAZORPAY_KEY_ID};
   },
 );

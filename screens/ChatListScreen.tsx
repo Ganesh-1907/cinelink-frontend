@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
+import PremiumBadge from '../src/components/Premium/PremiumBadge';
 
 const cleanName = (raw: string | null | undefined): string => {
   if (!raw) return '';
@@ -21,6 +22,7 @@ export default function ChatListScreen({navigation}: any) {
   const [chats, setChats] = useState<any[]>([]);
   const [userNames, setUserNames] = useState<any>({});
   const [userPhotos, setUserPhotos] = useState<any>({});
+  const [userBadgeData, setUserBadgeData] = useState<Record<string, {tier: string; verifiedReal: boolean}>>({});
   
   useEffect(() => {
     if (chats.length > 0) {
@@ -70,6 +72,7 @@ export default function ChatListScreen({navigation}: any) {
       );
       const names: any = {};
       const photos: any = {};
+      const badges: Record<string, {tier: string; verifiedReal: boolean}> = {};
       docs.forEach((doc, i) => {
         if (doc.exists) {
           const data = doc.data() as any;
@@ -77,10 +80,15 @@ export default function ChatListScreen({navigation}: any) {
           if (resolved) names[newIds[i]] = resolved;
           const photo = data?.photoUrl || data?.photoURL || null;
           if (photo) photos[newIds[i]] = photo;
+          badges[newIds[i]] = {
+            tier: data?.premiumTier || 'none',
+            verifiedReal: data?.verifiedReal === true,
+          };
         }
       });
       setUserNames((prev: any) => ({...prev, ...names}));
       setUserPhotos((prev: any) => ({...prev, ...photos}));
+      setUserBadgeData(prev => ({...prev, ...badges}));
     } catch (e) {
       console.log('❌ USER DATA LOAD ERROR:', e);
     }
@@ -220,7 +228,16 @@ const blockUser = async (otherId: string, otherName: string) => {
 
         {/* INFO */}
         <View style={{flex: 1}}>
-          <Text style={styles.name}>{resolvedName}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.name}>{resolvedName}</Text>
+            {otherId && userBadgeData[otherId] && (
+              <PremiumBadge
+                tier={userBadgeData[otherId].tier}
+                verifiedReal={userBadgeData[otherId].verifiedReal}
+                size="small"
+              />
+            )}
+          </View>
           <Text
             style={[styles.lastMessage, unreadCount > 0 && styles.lastMessageUnread]}
             numberOfLines={1}>
@@ -268,7 +285,7 @@ const blockUser = async (otherId: string, otherName: string) => {
         keyExtractor={item => item.id}
         renderItem={renderItem}
         ListEmptyComponent={EmptyComponent}
-        extraData={userNames}
+        extraData={[userNames, userBadgeData]}
         contentContainerStyle={{flexGrow: 1, padding: 12}}
       />
     </View>
@@ -333,6 +350,7 @@ const styles = StyleSheet.create({
   },
   unreadBadgeText: {color: '#FFFFFF', fontSize: 10, fontWeight: 'bold'},
 
+  nameRow: {flexDirection: 'row', alignItems: 'center', gap: 4},
   name: {color: '#FFFFFF', fontSize: 15, fontWeight: '600'},
   lastMessage: {color: '#A09080', marginTop: 2, fontSize: 13},
   lastMessageUnread: {color: '#FFFFFF', fontWeight: '600'},
@@ -355,9 +373,9 @@ const styles = StyleSheet.create({
   emptyBtn: {
     marginTop: 24, backgroundColor: '#C9956C', borderRadius: 25,
     paddingVertical: 12, paddingHorizontal: 28,
-    borderTopWidth: 2, borderTopColor: '#E8C4A0',
-    borderBottomWidth: 2, borderBottomColor: '#7A5535',
-    elevation: 6,
+    borderWidth: 1, borderTopColor: '#E8C4A0',
+    borderBottomColor: '#7A5535', borderLeftColor: 'rgba(232,196,160,0.45)',
+    borderRightColor: 'rgba(122,85,53,0.45)', elevation: 6,
   },
   emptyBtnText: {color: '#FFFFFF', fontWeight: 'bold', fontSize: 15},
 });

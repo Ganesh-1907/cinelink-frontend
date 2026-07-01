@@ -131,7 +131,12 @@ service cloud.firestore {
     match /contests/{contestId} {
       allow read: if isLoggedIn();
       allow create: if isLoggedIn() && isAdmin();
-      allow update, delete: if isAdmin();
+      allow delete: if isAdmin();
+      // Admin: anything. Non-admin: only increment entriesCount (paid entry submitted).
+      allow update: if isAdmin() || (
+        isLoggedIn() && isNotBanned() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['entriesCount'])
+      );
     }
 
     // ── Contest Entries ──────────────────────────────────────
