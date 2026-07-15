@@ -8,16 +8,6 @@ import {usePremiumStatus} from '../../../hooks/usePremiumStatus';
 import {initiateSubscriptionCheckout} from '../../services/razorpaySubscriptionService';
 import type {PremiumTier} from '../../types';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LINEAR GRADIENT — not yet installed.
-// To enable gold gradient buttons and tier-name text:
-//   1. npm install react-native-linear-gradient
-//   2. npx react-native run-android   (native rebuild required)
-//   3. Replace the <TouchableOpacity style={styles.subscribeBtn}> wrapper below
-//      with: <LinearGradient colors={['#D4AF37','#F4E5C2']} start={{x:0,y:0}}
-//             end={{x:1,y:0}} style={styles.subscribeBtn}>
-// ─────────────────────────────────────────────────────────────────────────────
-
 const C = {
   bg:      '#0D0D0D',
   surface: '#1A1A1A',
@@ -112,19 +102,15 @@ export default function PremiumCineLinkScreen({navigation}: any) {
       if (result.status === 'success') {
         Alert.alert(
           '✦ Subscribed!',
-          'Your CineLink Premium subscription is being activated. This may take a moment to reflect on your profile.',
+          'Your CineLink Premium subscription is being activated. The Razorpay webhook will grant access within a few seconds.',
           [{text: 'Done', onPress: () => navigation.goBack()}],
         );
       } else if (result.status === 'error') {
-        // Suppress the "not yet configured" error silently — the subscription
-        // backend hasn't been deployed yet; showing a payment-failure Alert
-        // when the user hasn't even seen a checkout is confusing.
         const isConfigError = result.message.includes('not yet configured');
         if (!isConfigError) {
           Alert.alert('Payment Failed', result.message);
         }
       }
-      // status === 'cancelled': user dismissed checkout, do nothing
     } finally {
       setProcessingTier(null);
     }
@@ -221,11 +207,6 @@ export default function PremiumCineLinkScreen({navigation}: any) {
                   <Text style={styles.activePlanBtnText}>Active Plan</Text>
                 </View>
               ) : (
-                // TODO (LinearGradient): replace TouchableOpacity with
-                // <LinearGradient colors={['#D4AF37','#F4E5C2']} start={{x:0,y:0}}
-                //   end={{x:1,y:0}} style={styles.subscribeBtn}>
-                //   <Text style={styles.subscribeBtnText}>...</Text>
-                // </LinearGradient>
                 <TouchableOpacity
                   style={[styles.subscribeBtn, isProcessing && styles.subscribeBtnDisabled]}
                   onPress={() => handleSubscribe(tier.key)}

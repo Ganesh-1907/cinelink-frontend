@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   Image,
+  SafeAreaView,
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
@@ -275,7 +276,7 @@ const blockUser = async (otherId: string, otherName: string) => {
   );
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>💬 Chats</Text>
         <Text style={styles.headerSub}>Connect with creators</Text>
@@ -288,7 +289,7 @@ const blockUser = async (otherId: string, otherName: string) => {
         extraData={[userNames, userBadgeData]}
         contentContainerStyle={{flexGrow: 1, padding: 12}}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

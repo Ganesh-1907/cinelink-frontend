@@ -7,8 +7,7 @@ import {
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import {getDaysLeft} from '../utils/contestUtils';
-
-const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+import {ADMIN_EMAIL} from '../src/api/config';
 
 const cleanName = (raw: string | null | undefined): string => {
   if (!raw) return 'Creator';

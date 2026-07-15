@@ -14,7 +14,7 @@ apply plugin: 'com.google.firebase.crashlytics'
         applicationId "com.cinelink"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
+        versionCode 6
         versionName "1.0.4"
         missingDimensionStrategy 'store', 'play'
     }
@@ -49,8 +49,8 @@ buildTypes {
     }
     release {
         signingConfig signingConfigs.release
-        minifyEnabled false
-        shrinkResources false
+        minifyEnabled true
+        shrinkResources true
         proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
     }
 }

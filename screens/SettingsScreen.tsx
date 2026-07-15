@@ -2,11 +2,14 @@
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, Switch, Alert, ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 export default function SettingsScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const user = auth().currentUser;
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -140,8 +143,9 @@ export default function SettingsScreen({navigation}: any) {
   };
 
   return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <ScrollView style={styles.container}>
-      <View style={styles.section}>
+      <View style={[styles.section, {paddingBottom: insets.bottom + 40}]}>
 
         <Text style={styles.sectionTitle}>Account</Text>
 
@@ -267,6 +271,7 @@ export default function SettingsScreen({navigation}: any) {
 
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

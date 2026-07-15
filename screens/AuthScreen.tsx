@@ -2,14 +2,16 @@ import React, {useState} from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, StatusBar,
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import {GoogleSignin, statusCodes} from '@react-native-google-signin/google-signin';
+import {GOOGLE_WEB_CLIENT_ID} from '../src/api/config';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 GoogleSignin.configure({
-  webClientId: '446255844348-sv3ii7l6q5ckt2b0501dbu2mv02p1onq.apps.googleusercontent.com',
+  webClientId: GOOGLE_WEB_CLIENT_ID,
 });
 
 // ─── Theme ────────────────────────────────────────────────────
@@ -31,6 +33,7 @@ const C = {
 type AuthMode = 'login' | 'signup';
 
 export default function AuthScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -131,11 +134,12 @@ const [showPassword, setShowPassword] = useState(false);
   };
 
   return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <StatusBar barStyle="light-content" backgroundColor={C.background} />
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.scroll, {paddingBottom: insets.bottom + 20}]} keyboardShouldPersistTaps="handled">
 
         {/* ── LOGO ─────────────────────────────────────────── */}
         <View style={styles.logoSection}>
@@ -287,6 +291,7 @@ const [showPassword, setShowPassword] = useState(false);
 
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -295,10 +300,10 @@ const [showPassword, setShowPassword] = useState(false);
 ══════════════════════════════════════ */
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: C.background},
-  scroll:    {flexGrow: 1, paddingHorizontal: 20, paddingBottom: 40},
+  scroll:    {flexGrow: 1, paddingHorizontal: 20},
 
   // ── Logo ────────────────────────────────────────────────────
-  logoSection: {alignItems: 'center', paddingTop: 70, paddingBottom: 32},
+  logoSection: {alignItems: 'center', paddingBottom: 32},
   logo:        {fontSize: 64, marginBottom: 12},
   appName:     {
     color: C.primary,

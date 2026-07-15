@@ -14,9 +14,7 @@ import {launchImageLibrary} from 'react-native-image-picker';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import Video from 'react-native-video';
-
-const CLOUD_NAME = 'dipwobgzb';
-const UPLOAD_PRESET = 'cinelink_upload';
+import {uploadVideo} from '../src/services/uploadService';
 const MAX_DURATION = 90;
 
 export default function UploadReelsScreen({navigation}: any) {
@@ -64,19 +62,8 @@ export default function UploadReelsScreen({navigation}: any) {
 
     try {
       /* Upload video to Cloudinary */
-      const formData = new FormData();
-      formData.append('file', {
-        uri: videoUri,
-        type: 'video/mp4',
-        name: `reel_${Date.now()}.mp4`,
-      } as any);
-      formData.append('upload_preset', UPLOAD_PRESET);
-
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
-        {method: 'POST', body: formData},
-      );
-      const videoData = await response.json();
+      const result = await uploadVideo(videoUri);
+      const videoData = { secure_url: result.secureUrl };
       setUploading(false);
 
       /* Fetch user profile */

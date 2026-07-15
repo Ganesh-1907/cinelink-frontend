@@ -13,8 +13,8 @@ import {
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import {parseDeadline} from '../utils/contestUtils';
-
-const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+import {ADMIN_EMAIL} from '../src/api/config';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const CONTEST_TYPES = [
   'Short Film',
@@ -26,6 +26,7 @@ const CONTEST_TYPES = [
 ];
 
 export default function PostContestScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [prize, setPrize] = useState('');
@@ -123,7 +124,7 @@ for (let i = 0; i < otherUsers.length; i += 450) {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-        <View style={styles.section}>
+        <View style={[styles.section, {paddingBottom: insets.bottom + 40}]}>
 
           {/* TITLE */}
           <Text style={styles.label}>Contest Title *</Text>

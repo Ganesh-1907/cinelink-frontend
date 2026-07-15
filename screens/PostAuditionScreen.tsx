@@ -7,15 +7,15 @@ import {
 import {launchImageLibrary} from 'react-native-image-picker';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
-
-const CLOUD_NAME    = 'dipwobgzb';
-const UPLOAD_PRESET = 'cinelink_upload';
-const ADMIN_EMAIL   = 'anilkumardevarakonda03@gmail.com';
+import {ADMIN_EMAIL} from '../src/api/config';
+import {uploadImage} from '../src/services/uploadService';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const ROLES       = ['Hero', 'Heroine', 'Villain', 'Supporting', 'Child Artist', 'Comedian', 'Any Role'];
 const CATEGORIES  = ['Movies', 'Short Films', 'Theatre', 'YouTube / Web', 'TV / OTT'];
 
 export default function PostAuditionScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const [title,               setTitle]               = useState('');
   const [description,         setDescription]         = useState('');
   const [location,            setLocation]            = useState('');
@@ -87,16 +87,9 @@ export default function PostAuditionScreen({navigation}: any) {
   const uploadPoster = async (uri: string): Promise<string> => {
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', {uri, type: 'image/jpeg', name: 'poster.jpg'} as any);
-      formData.append('upload_preset', UPLOAD_PRESET);
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-        {method: 'POST', body: formData},
-      );
-      const data = await response.json();
-      setPosterUrl(data.secure_url);
-      return data.secure_url;
+      const result = await uploadImage(uri);
+      setPosterUrl(result.secureUrl);
+      return result.secureUrl;
     } catch (e) {
       Alert.alert('Upload failed', 'Could not upload poster.');
       setPoster(null);
@@ -249,7 +242,7 @@ await firestore().collection('feedPosts').add({
           </Text>
         </View>
 
-        <View style={styles.section}>
+        <View style={[styles.section, {paddingBottom: insets.bottom + 40}]}>
 
           {/* ── POSTER PICKER ── */}
           <TouchableOpacity
@@ -415,7 +408,7 @@ const styles = StyleSheet.create({
   accessBadge:     {backgroundColor: '#0A2E1F', marginHorizontal: 20, marginTop: 10, borderRadius: 10, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#4ADE80'},
   accessBadgeText: {color: '#4ADE80', fontWeight: 'bold', fontSize: 13},
 
-  section: {padding: 20, paddingBottom: 48},
+  section: {padding: 20},
 
   // Poster
   posterPicker:      {width: '100%', borderRadius: 16, overflow: 'hidden', marginBottom: 8, borderWidth: 1.5, borderColor: '#2A2A2A', borderStyle: 'dashed'},

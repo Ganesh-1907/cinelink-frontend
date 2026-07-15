@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const cleanName = (raw: string | null | undefined): string => {
   if (!raw) return 'Creator';
@@ -12,6 +13,7 @@ const cleanName = (raw: string | null | undefined): string => {
 };
 
 export default function FollowersScreen({route, navigation}: any) {
+  const insets = useSafeAreaInsets();
   const {userId, displayName, tab = 'followers'} = route.params;
   const [activeTab, setActiveTab] = useState<'followers' | 'following'>(tab);
   const [followers, setFollowers] = useState<any[]>([]);
@@ -208,7 +210,7 @@ export default function FollowersScreen({route, navigation}: any) {
           data={data}
           keyExtractor={item => item.id}
           renderItem={renderUser}
-          contentContainerStyle={{padding: 16, paddingBottom: 100}}
+          contentContainerStyle={{padding: 16, paddingBottom: insets.bottom + 80}}
           showsVerticalScrollIndicator={false}
         />
       )}

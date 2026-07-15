@@ -10,6 +10,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const C = {
   bg:      '#0A0A0A',
@@ -34,6 +35,7 @@ function SkeletonCard() {
 }
 
 export default function BrowseContestsScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const [contests, setContests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -179,7 +181,7 @@ export default function BrowseContestsScreen({navigation}: any) {
           data={filtered}
           keyExtractor={item => item.id}
           renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, {paddingBottom: insets.bottom + 24}]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyBox}>

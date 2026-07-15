@@ -2,6 +2,7 @@
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   Alert, ActivityIndicator, RefreshControl, TextInput, Image, Linking,
+  SafeAreaView,
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
@@ -279,6 +280,7 @@ export default function AdminReportsScreen({navigation}: any) {
   const reviewedApprovals = approvals.filter(a => a.status !== 'pending');
 
   return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <ScrollView
       style={styles.container}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#C9956C" colors={['#C9956C']} progressBackgroundColor="#1C1C1C" />}>
@@ -586,6 +588,7 @@ export default function AdminReportsScreen({navigation}: any) {
 
       <View style={{height: 60}} />
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

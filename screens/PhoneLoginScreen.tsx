@@ -2,10 +2,11 @@ import React, {useState, useEffect, useRef} from 'react';
 import {
   View, Text, TextInput, StyleSheet,
   ScrollView, StatusBar, ActivityIndicator,
-  KeyboardAvoidingView, Platform, TouchableOpacity,
+  KeyboardAvoidingView, Platform, TouchableOpacity, SafeAreaView,
 } from 'react-native';
-import auth, {FirebaseAuthTypes} from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
+import api from '../src/api/client';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {LiquidPress} from '../components/LiquidPress';
 
 const C = {
@@ -25,28 +26,18 @@ const C = {
 
 const RESEND_COUNTDOWN = 60;
 
-const firebaseErrorMessage = (code: string): string => {
-  switch (code) {
-    case 'auth/invalid-phone-number':
-      return 'Invalid phone number. Please check and try again.';
-    case 'auth/invalid-verification-code':
-      return 'Incorrect OTP. Please check and try again.';
-    case 'auth/code-expired':
-      return 'OTP has expired. Please request a new one.';
-    case 'auth/too-many-requests':
-      return 'Too many attempts. Please wait a few minutes and try again.';
-    case 'auth/quota-exceeded':
-      return 'SMS limit reached. Please try again later.';
-    case 'auth/session-expired':
-      return 'Session expired. Please request a new OTP.';
-    case 'auth/missing-phone-number':
-      return 'Please enter a phone number.';
-    default:
-      return 'Something went wrong. Please try again.';
-  }
+const errorMessage = (msg: string): string => {
+  if (msg.includes('Invalid OTP') || msg.includes('invalid OTP') || msg.includes('expired OTP'))
+    return 'Incorrect or expired OTP. Please try again.';
+  if (msg.includes('Invalid phone'))
+    return 'Invalid phone number. Please check and try again.';
+  if (msg.includes('Too many'))
+    return 'Too many attempts. Please wait a few minutes and try again.';
+  return msg || 'Something went wrong. Please try again.';
 };
 
 export default function PhoneLoginScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const [phone, setPhone]           = useState('');
   const [otp, setOtp]               = useState('');
   const [step, setStep]             = useState<'phone' | 'otp'>('phone');
@@ -55,8 +46,8 @@ export default function PhoneLoginScreen({navigation}: any) {
   const [errorMsg, setErrorMsg]     = useState('');
   const [countdown, setCountdown]   = useState(0);
 
-  const timerRef       = useRef<ReturnType<typeof setInterval> | null>(null);
-  const confirmationRef = useRef<FirebaseAuthTypes.ConfirmationResult | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const confirmationRef = useRef<any>(null);
 
   useEffect(() => {
     return () => {
@@ -78,17 +69,6 @@ export default function PhoneLoginScreen({navigation}: any) {
     }, 1000);
   };
 
-  const requestOTP = async (cleaned: string): Promise<boolean> => {
-    try {
-      const confirmation = await auth().signInWithPhoneNumber(`+91${cleaned}`);
-      confirmationRef.current = confirmation;
-      return true;
-    } catch (e: any) {
-      setErrorMsg(firebaseErrorMessage(e?.code));
-      return false;
-    }
-  };
-
   const handleSendOTP = async () => {
     setErrorMsg('');
     const cleaned = phone.replace(/\s/g, '');
@@ -97,42 +77,37 @@ export default function PhoneLoginScreen({navigation}: any) {
       return;
     }
     setSendingOtp(true);
-    const ok = await requestOTP(cleaned);
-    setSendingOtp(false);
-    if (ok) {
+    try {
+      await api.post('/otp/send', {phone: cleaned});
       setStep('otp');
       startCountdown();
+    } catch (e: any) {
+      setErrorMsg(errorMessage(e.message));
+    } finally {
+      setSendingOtp(false);
     }
   };
 
   const handleVerifyOTP = async () => {
     setErrorMsg('');
     const otpCleaned = otp.replace(/\s/g, '');
-    if (!/^\d{6}$/.test(otpCleaned)) {
-      setErrorMsg('Please enter the 6-digit OTP sent to your number.');
-      return;
-    }
-    if (!confirmationRef.current) {
-      setErrorMsg('Session lost. Please go back and request a new OTP.');
+    if (!/^\d{4,6}$/.test(otpCleaned)) {
+      setErrorMsg('Please enter the OTP sent to your number.');
       return;
     }
     setVerifying(true);
     try {
-      const result = await confirmationRef.current.confirm(otpCleaned);
-      if (result?.user) {
-        await firestore().collection('users').doc(result.user.uid).set({
-          uid:       result.user.uid,
-          phone:     result.user.phoneNumber,
-          role:      'Actor',
-          createdAt: firestore.FieldValue.serverTimestamp(),
-          isOnline:  true,
-          lastSeen:  firestore.FieldValue.serverTimestamp(),
-        }, {merge: true});
-      }
+      const res = await api.post('/otp/verify', {
+        phone: phone.replace(/\s/g, ''),
+        otp: otpCleaned,
+      });
+
+      // Sign in with the custom token from backend
+      await auth().signInWithCustomToken(res.token);
       // App.tsx onAuthStateChanged auto-routes to MainStack
     } catch (e: any) {
+      setErrorMsg(errorMessage(e.message));
       setVerifying(false);
-      setErrorMsg(firebaseErrorMessage(e?.code));
     }
   };
 
@@ -141,10 +116,13 @@ export default function PhoneLoginScreen({navigation}: any) {
     setErrorMsg('');
     const cleaned = phone.replace(/\s/g, '');
     setSendingOtp(true);
-    const ok = await requestOTP(cleaned);
-    setSendingOtp(false);
-    if (ok) {
+    try {
+      await api.post('/otp/resend', {phone: cleaned});
       startCountdown();
+    } catch (e: any) {
+      setErrorMsg(errorMessage(e.message));
+    } finally {
+      setSendingOtp(false);
     }
   };
 
@@ -158,11 +136,12 @@ export default function PhoneLoginScreen({navigation}: any) {
   };
 
   return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <StatusBar barStyle="light-content" backgroundColor={C.background} />
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.scroll, {paddingBottom: insets.bottom + 20}]} keyboardShouldPersistTaps="handled">
 
         {/* HEADER */}
         <View style={styles.header}>
@@ -278,14 +257,15 @@ export default function PhoneLoginScreen({navigation}: any) {
 
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: C.background},
-  scroll:    {flexGrow: 1, paddingHorizontal: 20, paddingBottom: 40},
+  scroll:    {flexGrow: 1, paddingHorizontal: 20},
 
-  header: {alignItems: 'center', paddingTop: 70, paddingBottom: 32},
+  header: {alignItems: 'center', paddingBottom: 32},
   headerIcon:  {fontSize: 52, marginBottom: 12},
   headerTitle: {color: C.primary, fontSize: 28, fontWeight: '800', letterSpacing: 0.5},
   headerSub:   {color: C.textSecondary, fontSize: 14, marginTop: 6, textAlign: 'center'},

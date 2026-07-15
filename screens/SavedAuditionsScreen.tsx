@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -107,6 +108,7 @@ export default function SavedAuditionsScreen({navigation}: any) {
   };
 
   return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <ScrollView
       style={styles.container}
       showsVerticalScrollIndicator={false}
@@ -215,6 +217,7 @@ export default function SavedAuditionsScreen({navigation}: any) {
         )}
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

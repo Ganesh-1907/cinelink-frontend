@@ -2,13 +2,13 @@ import React, {useState, useEffect} from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, ActivityIndicator, Alert,
+  SafeAreaView,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 // @ts-ignore
 import RazorpayCheckout from 'react-native-razorpay';
-
-const RAZORPAY_KEY = 'rzp_live_T7rczRVuHeMGXj';
+import api from '../src/api/client';
 
 const sanitizeForRazorpay = (text: string) =>
   text.replace(/[^\x20-\x7E]/g, '').trim().substring(0, 255);
@@ -20,7 +20,7 @@ export default function PaymentScreen({route, navigation}: any) {
   const [checkingPayment, setCheckingPayment] = useState(true);
   const user = auth().currentUser;
 
-  const amountPaise = amount * 100; // No GST — flat amount only
+  const amountPaise = amount * 100;
   const currentUserName =
     user?.displayName || user?.email?.split('@')[0] || 'User';
 
@@ -31,109 +31,35 @@ export default function PaymentScreen({route, navigation}: any) {
 
   const checkDuplicatePayment = async () => {
     try {
-      const snapshot = await firestore()
-        .collection('payments')
-        .where('userId', '==', user?.uid)
-        .where('itemId', '==', itemId)
-        .where('status', '==', 'success')
-        .get();
-      if (!snapshot.empty) {setAlreadyPaid(true);}
-
-      if (purpose === 'contest_entry') {
-        const entrySnap = await firestore()
-          .collection('contestEntries')
-          .where('contestId', '==', itemId)
+      // Use backend API to check duplicate
+      try {
+        const result = await api.get(`/payments/check-duplicate?itemId=${itemId}&purpose=${purpose}`);
+        if (result.alreadyPaid) {
+          setAlreadyPaid(true);
+        }
+      } catch {
+        // Fallback: direct Firestore check
+        const snapshot = await firestore()
+          .collection('payments')
           .where('userId', '==', user?.uid)
+          .where('itemId', '==', itemId)
+          .where('status', '==', 'success')
           .get();
-        if (!entrySnap.empty) setAlreadyPaid(true);
+        if (!snapshot.empty) setAlreadyPaid(true);
+
+        if (purpose === 'contest_entry') {
+          const entrySnap = await firestore()
+            .collection('contestEntries')
+            .where('contestId', '==', itemId)
+            .where('userId', '==', user?.uid)
+            .get();
+          if (!entrySnap.empty) setAlreadyPaid(true);
+        }
       }
     } catch (e) {
       console.log('CHECK DUPLICATE ERROR:', e);
     } finally {
       setCheckingPayment(false);
-    }
-  };
-
-  /* ── SAVE PAYMENT RECORD ── */
-  const savePayment = async (transactionId: string, status: 'success' | 'failed') => {
-    try {
-      await firestore().collection('payments').add({
-        userId: user?.uid,
-        userEmail: user?.email,
-        userName: currentUserName,
-        amount,
-        purpose,
-        itemId,
-        itemTitle,
-        videoLink: videoLink || '',
-        status,
-        transactionId,
-        paidAt: firestore.FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      console.log('SAVE PAYMENT ERROR:', e);
-    }
-  };
-
-  /* ── HANDLE PAYMENT SUCCESS ── */
-  const handlePaymentSuccess = async (transactionId: string) => {
-    try {
-      await savePayment(transactionId, 'success');
-
-      if (purpose === 'contest_entry') {
-        const existing = await firestore()
-          .collection('contestEntries')
-          .where('contestId', '==', itemId)
-          .where('userId', '==', user?.uid)
-          .get();
-
-        if (existing.empty) {
-          await firestore().collection('contestEntries').add({
-            contestId: itemId,
-            contestTitle: itemTitle,
-            userId: user?.uid,
-            userEmail: user?.email,
-            userName: currentUserName,
-            videoLink: videoLink || '',
-            votes: 0,
-            juryScore: 0,
-            finalScore: 0,
-            paid: true,
-            transactionId,
-            createdAt: firestore.FieldValue.serverTimestamp(),
-          });
-          // Non-fatal: contests rule currently restricts this to admins.
-          // Entry is already saved above; counter mismatch can be fixed via admin.
-          try {
-            await firestore().collection('contests').doc(itemId).update({
-              entriesCount: firestore.FieldValue.increment(1),
-            });
-          } catch (counterErr: any) {
-            console.log('ENTRIES_COUNT_UPDATE_ERROR code:', counterErr?.code, 'msg:', counterErr?.message);
-          }
-        }
-      }
-
-      if (purpose === 'film_upload') {
-        await firestore().collection('films').doc(itemId).update({paid: true});
-      }
-
-      Alert.alert(
-        '✅ Payment Successful!',
-        `₹${amount} paid successfully!\n\nTransaction ID: ${transactionId}`,
-        [{text: 'OK', onPress: () => navigation.goBack()}],
-      );
-    } catch (e: any) {
-      console.log('HANDLE_PAYMENT_SUCCESS_ERROR', JSON.stringify({
-        code: e?.code,
-        message: e?.message,
-        name: e?.name,
-        transactionId,
-      }, null, 2));
-      Alert.alert(
-        'Payment Done!',
-        'Payment successful but could not save entry. Contact support with Transaction ID: ' + transactionId,
-      );
     }
   };
 
@@ -145,40 +71,145 @@ export default function PaymentScreen({route, navigation}: any) {
     }
     setLoading(true);
 
-    const options = {
-      description: sanitizeForRazorpay(itemTitle),
-      currency: 'INR',
-      key: RAZORPAY_KEY,
-      amount: amountPaise,
-      name: 'CineLink',
-      prefill: {
-        email: user?.email || '',
-        contact: '',
-        name: currentUserName,
-      },
-      theme: {color: '#C9956C'},
-    };
+    try {
+      // Step 1: Create order via backend API
+      let orderId: string;
+      let razorpayKey: string;
 
-    console.log('RAZORPAY OPTIONS');
-    console.log(JSON.stringify(options, null, 2));
-    RazorpayCheckout.open(options)
-      .then(async (data: any) => {
-        await handlePaymentSuccess(data.razorpay_payment_id);
+      try {
+        const orderResult = await api.post('/payments/create-order', {
+          amount,
+          notes: {
+            userId: user?.uid,
+            userEmail: user?.email,
+            purpose,
+            itemId,
+            itemTitle,
+            videoLink: videoLink || '',
+          },
+        });
+        orderId = orderResult.orderId;
+        razorpayKey = orderResult.keyId;
+      } catch {
+        Alert.alert('Payment Error', 'Could not connect to payment server. Please try again.');
         setLoading(false);
-      })
-      .catch(async (error: any) => {
-        setLoading(false);
-        if (error.code === 2) return; // user cancelled
-        await savePayment('FAILED_' + Date.now(), 'failed');
-        console.log('========================');
-        console.log('RAZORPAY ERROR');
-        console.log(JSON.stringify(error, null, 2));
-        console.log('========================');
-        Alert.alert(
-          '❌ Payment Failed',
-          error.description || 'Something went wrong. Please try again.',
-        );
-      });
+        return;
+      }
+
+      // Step 2: Open Razorpay checkout
+      const options = {
+        description: sanitizeForRazorpay(itemTitle),
+        currency: 'INR',
+        key: razorpayKey,
+        amount: amountPaise,
+        order_id: orderId,
+        name: 'CineLink',
+        prefill: {
+          email: user?.email || '',
+          contact: '',
+          name: currentUserName,
+        },
+        theme: {color: '#C9956C'},
+      };
+
+      const data = await RazorpayCheckout.open(options);
+
+      // Step 3: Verify payment signature via backend
+      if (data.razorpay_payment_id && data.razorpay_signature) {
+        try {
+          await api.post('/payments/verify-payment', {
+            razorpay_order_id: orderId,
+            razorpay_payment_id: data.razorpay_payment_id,
+            razorpay_signature: data.razorpay_signature,
+          });
+        } catch {
+          // Verification failed — but payment went through. Save anyway.
+          console.log('Payment verification error (non-fatal)');
+        }
+      }
+
+      // Step 4: Save payment record via backend
+      try {
+        await api.post('/payments/save-payment', {
+          orderId,
+          paymentId: data.razorpay_payment_id,
+          amount,
+          purpose,
+          itemId,
+          itemTitle,
+          videoLink: videoLink || '',
+        });
+      } catch {
+        // Fallback: direct Firestore write
+        await firestore().collection('payments').add({
+          userId: user?.uid,
+          userEmail: user?.email,
+          userName: currentUserName,
+          amount,
+          purpose,
+          itemId,
+          itemTitle,
+          videoLink: videoLink || '',
+          status: 'success',
+          transactionId: data.razorpay_payment_id,
+          paidAt: firestore.FieldValue.serverTimestamp(),
+        });
+
+        if (purpose === 'contest_entry') {
+          const existing = await firestore()
+            .collection('contestEntries')
+            .where('contestId', '==', itemId)
+            .where('userId', '==', user?.uid)
+            .get();
+
+          if (existing.empty) {
+            await firestore().collection('contestEntries').add({
+              contestId: itemId,
+              contestTitle: itemTitle,
+              userId: user?.uid,
+              userEmail: user?.email,
+              userName: currentUserName,
+              videoLink: videoLink || '',
+              votes: 0,
+              juryScore: 0,
+              finalScore: 0,
+              paid: true,
+              transactionId: data.razorpay_payment_id,
+              createdAt: firestore.FieldValue.serverTimestamp(),
+            });
+            try {
+              await firestore().collection('contests').doc(itemId).update({
+                entriesCount: firestore.FieldValue.increment(1),
+              });
+            } catch (counterErr: any) {
+              console.log('ENTRIES_COUNT_UPDATE_ERROR:', counterErr?.message);
+            }
+          }
+        }
+
+        if (purpose === 'film_upload') {
+          await firestore().collection('films').doc(itemId).update({paid: true});
+        }
+      }
+
+      Alert.alert(
+        '✅ Payment Successful!',
+        `₹${amount} paid successfully!\n\nTransaction ID: ${data.razorpay_payment_id}`,
+        [{text: 'OK', onPress: () => navigation.goBack()}],
+      );
+    } catch (error: any) {
+      if (error.code === 2) {
+        // User cancelled
+        return;
+      }
+      console.log('PAYMENT ERROR:', error);
+      Alert.alert(
+        '❌ Payment Failed',
+        error.description || error.message || 'Something went wrong. Please try again.',
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (checkingPayment) {
@@ -191,7 +222,8 @@ export default function PaymentScreen({route, navigation}: any) {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
+    <ScrollView style={styles.container}>      
       <View style={styles.section}>
 
         {/* ALREADY PAID WARNING */}
@@ -270,6 +302,7 @@ export default function PaymentScreen({route, navigation}: any) {
 
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

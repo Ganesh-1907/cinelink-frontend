@@ -1,7 +1,7 @@
 ﻿import React, {useState, useEffect} from 'react';
 import {
   View, Text, StyleSheet, ScrollView, StatusBar,
-  ActivityIndicator, TouchableOpacity, Alert,
+  ActivityIndicator, TouchableOpacity, Alert, SafeAreaView,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
@@ -295,6 +295,7 @@ export default function NotificationsScreen({navigation}: any) {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <ScrollView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={C.background} />
       <View style={styles.section}>
@@ -424,6 +425,7 @@ export default function NotificationsScreen({navigation}: any) {
         )}
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

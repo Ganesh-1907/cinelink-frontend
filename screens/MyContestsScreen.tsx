@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -11,8 +12,7 @@ import {
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
-
-const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+import {ADMIN_EMAIL} from '../src/api/config';
 
 export default function MyContestsScreen({navigation}: any) {
   const [contests, setContests] = useState<any[]>([]);
@@ -95,6 +95,7 @@ const loadMyContests = () => {
   };
 
   return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
 
       {/* TABS */}
@@ -260,6 +261,7 @@ const loadMyContests = () => {
         )}
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

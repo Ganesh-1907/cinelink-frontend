@@ -2,6 +2,7 @@
 import {
   View, Text, StyleSheet, ScrollView, Image,
   TouchableOpacity, Linking, TextInput, Share,
+  SafeAreaView,
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
@@ -84,6 +85,7 @@ export default function FilmDetailScreen({route, navigation}: any) {
   );
 
   return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <ScrollView style={styles.container}>
 
       {/* POSTER */}
@@ -183,6 +185,7 @@ export default function FilmDetailScreen({route, navigation}: any) {
 
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

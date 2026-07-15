@@ -2,7 +2,9 @@
 import {
   View, Text, StyleSheet, TouchableOpacity,
   Dimensions, FlatList, StatusBar, Animated,
+  SafeAreaView,
 } from 'react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {LiquidPress} from '../components/LiquidPress';
 
@@ -52,6 +54,7 @@ interface OnboardingProps {
 }
 
 export default function OnboardingScreen({onDone}: OnboardingProps) {
+  const insets = useSafeAreaInsets();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -118,12 +121,12 @@ export default function OnboardingScreen({onDone}: OnboardingProps) {
   const isLastSlide = currentIndex === SLIDES.length - 1;
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
       {/* Skip button */}
       {!isLastSlide && (
-        <TouchableOpacity style={styles.skipBtn} onPress={handleDone}>
+        <TouchableOpacity style={[styles.skipBtn, {top: insets.top + 10}]} onPress={handleDone}>
           <Text style={styles.skipText}>Skip</Text>
         </TouchableOpacity>
       )}
@@ -167,7 +170,7 @@ export default function OnboardingScreen({onDone}: OnboardingProps) {
           </Text>
         )}
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -192,7 +195,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
-    paddingTop: 80,
   },
 
   emojiContainer: {

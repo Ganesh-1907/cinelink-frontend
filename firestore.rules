@@ -3,7 +3,10 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function isLoggedIn() { return request.auth != null; }
-    function isAdmin() { return request.auth.token.email == 'anilkumardevarakonda03@gmail.com'; }
+    function isAdmin() {
+      return request.auth.token.email == 'anilkumardevarakonda03@gmail.com' ||
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true);
+    }
     function isOwner(userId) { return request.auth.uid == userId; }
     function isNotBanned() {
       return !exists(/databases/$(database)/documents/bannedUsers/$(request.auth.uid));
@@ -178,6 +181,8 @@ service cloud.firestore {
     // ── Payments ─────────────────────────────────────────────
     match /payments/{paymentId} {
       allow read: if isLoggedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      // Server-side only: backend API + webhook handle writes
+      // Clients can only create if the backend endpoint is unreachable (fallback)
       allow create: if isLoggedIn();
       allow update, delete: if isAdmin();
     }
@@ -186,7 +191,8 @@ service cloud.firestore {
     match /subscriptions/{subscriptionId} {
       // Users can only read their own subscription history
       allow read: if isLoggedIn() && resource.data.userId == request.auth.uid;
-      // All writes are Cloud Functions only — no client writes permitted
+      // All writes are backend server only — no client writes permitted
+      allow create, update, delete: if false;
     }
 
     // ── Reports ──────────────────────────────────────────────

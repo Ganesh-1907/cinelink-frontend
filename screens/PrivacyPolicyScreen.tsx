@@ -1,12 +1,12 @@
 ﻿import React from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, StatusBar,
+  TouchableOpacity, StatusBar, SafeAreaView,
 } from 'react-native';
 
 export default function PrivacyPolicyScreen({navigation}: any) {
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
       {/* HEADER */}
@@ -135,7 +135,7 @@ export default function PrivacyPolicyScreen({navigation}: any) {
 
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
 
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingTop: 52, paddingBottom: 16,
+    paddingHorizontal: 16, paddingBottom: 16,
     backgroundColor: '#0A0A0A', borderBottomWidth: 1, borderBottomColor: '#1C1C1C',
   },
   backBtn: {marginRight: 12},

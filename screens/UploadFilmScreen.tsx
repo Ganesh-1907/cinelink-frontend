@@ -14,9 +14,7 @@ import {
 import {launchImageLibrary} from 'react-native-image-picker';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
-
-const CLOUD_NAME = 'dipwobgzb';
-const UPLOAD_PRESET = 'cinelink_upload';
+import {uploadImage, uploadVideo} from '../src/services/uploadService';
 
 const GENRES = ['Drama', 'Action', 'Romance', 'Comedy', 'Thriller', 'Sci-Fi', 'Horror', 'Documentary'];
 
@@ -43,12 +41,8 @@ export default function UploadFilmScreen({navigation}: any) {
       setPosterUrl(null);
       setUploadingPoster(true);
       try {
-        const fd = new FormData();
-        fd.append('file', {uri, type: 'image/jpeg', name: 'poster.jpg'} as any);
-        fd.append('upload_preset', UPLOAD_PRESET);
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {method: 'POST', body: fd});
-        const data = await res.json();
-        setPosterUrl(data.secure_url);
+        const result = await uploadImage(uri);
+        setPosterUrl(result.secureUrl);
       } catch { Alert.alert('Error', 'Poster upload failed.'); }
       finally { setUploadingPoster(false); }
     }
@@ -61,12 +55,8 @@ export default function UploadFilmScreen({navigation}: any) {
       setVideoUrl(null);
       setUploadingVideo(true);
       try {
-        const fd = new FormData();
-        fd.append('file', {uri, type: 'video/mp4', name: 'film.mp4'} as any);
-        fd.append('upload_preset', UPLOAD_PRESET);
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`, {method: 'POST', body: fd});
-        const data = await res.json();
-        setVideoUrl(data.secure_url);
+        const result = await uploadVideo(uri);
+        setVideoUrl(result.secureUrl);
       } catch { Alert.alert('Error', 'Video upload failed.'); }
       finally { setUploadingVideo(false); }
     }

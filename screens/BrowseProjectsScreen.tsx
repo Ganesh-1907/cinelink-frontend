@@ -5,10 +5,12 @@ import {
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const PROJECT_TYPES = ['All', 'Short Film', 'Feature Film', 'Web Series', 'Ad Film', 'Music Video', 'Documentary'];
 
 export default function BrowseProjectsScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
@@ -179,7 +181,7 @@ export default function BrowseProjectsScreen({navigation}: any) {
           data={filteredProjects}
           keyExtractor={item => item.id}
           renderItem={renderProject}
-          contentContainerStyle={{padding: 16, paddingBottom: 100}}
+          contentContainerStyle={{padding: 16, paddingBottom: insets.bottom + 80}}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>

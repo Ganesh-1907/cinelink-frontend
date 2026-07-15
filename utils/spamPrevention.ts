@@ -6,6 +6,7 @@
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import {Alert} from 'react-native';
+import {ADMIN_EMAIL} from '../src/api/config';
 
 // ─── RATE LIMITS (customize as needed) ──────────────────────────────────────
 const RATE_LIMITS: any = {
@@ -32,7 +33,7 @@ const RATE_LIMITS: any = {
 };
 
 // Admin email — admins bypass all rate limits
-const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+// (imported from src/api/config.ts)
 
 // ─── CHECK IF USER CAN POST ─────────────────────────────────────────────────
 // Call this BEFORE allowing a post. Returns { allowed: true/false, message }

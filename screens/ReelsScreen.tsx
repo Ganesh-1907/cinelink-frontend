@@ -10,11 +10,17 @@ import {
   Image,
   StatusBar,
   Platform,
+  Share,
+  Modal,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import Video from 'react-native-video';
 import {useFocusEffect} from '@react-navigation/native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const {height: SCREEN_HEIGHT, width: SCREEN_WIDTH} = Dimensions.get('window');
 const STATUS_BAR_HEIGHT = StatusBar.currentHeight ?? 24;
@@ -25,6 +31,7 @@ const cleanName = (raw: string | null | undefined): string => {
 };
 
 export default function ReelsScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const currentUser = auth().currentUser;
   const [reels, setReels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,6 +105,58 @@ export default function ReelsScreen({navigation}: any) {
     }
   }, []);
 
+  const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [selectedReel, setSelectedReel] = useState<any>(null);
+  const [commentText, setCommentText] = useState('');
+  const [comments, setComments] = useState<any[]>([]);
+  const [postingComment, setPostingComment] = useState(false);
+
+  const openComments = async (reel: any) => {
+    setSelectedReel(reel);
+    setCommentModalVisible(true);
+    try {
+      const snap = await firestore()
+        .collection('cinereels').doc(reel.id)
+        .collection('comments')
+        .orderBy('createdAt', 'desc')
+        .limit(50)
+        .get();
+      setComments(snap.docs.map(d => ({id: d.id, ...d.data()})));
+    } catch (e) { setComments([]); }
+  };
+
+  const postComment = async () => {
+    if (!commentText.trim() || !selectedReel || !currentUser) return;
+    setPostingComment(true);
+    try {
+      await firestore().collection('cinereels').doc(selectedReel.id)
+        .collection('comments').add({
+          text: commentText.trim(),
+          userId: currentUser.uid,
+          userName: currentUser.displayName || currentUser.email?.split('@')[0] || 'User',
+          userPhoto: currentUser.photoURL || '',
+          createdAt: firestore.FieldValue.serverTimestamp(),
+        });
+      await firestore().collection('cinereels').doc(selectedReel.id).update({
+        comments: firestore.FieldValue.increment(1),
+      });
+      setCommentText('');
+      setComments(prev => [{id: 'new', text: commentText.trim(), userName: currentUser.displayName || 'User'}, ...prev]);
+      Alert.alert('Done', 'Comment posted!');
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally { setPostingComment(false); }
+  };
+
+  const shareReel = async (reel: any) => {
+    try {
+      await Share.share({
+        message: `🎬 Check out this CineReel by ${reel.creatorName || 'Creator'}!\n\n${reel.caption || ''}\n\nWatch on CineLink 📱`,
+        url: reel.videoUrl || '',
+      });
+    } catch (e) {}
+  };
+
   const viewabilityConfig = useRef({itemVisiblePercentThreshold: 60}).current;
 
   const renderReel = ({item, index}: any) => {
@@ -140,7 +199,7 @@ export default function ReelsScreen({navigation}: any) {
         )}
 
         {/* TOP BAR — overlaid on video */}
-        <View style={styles.topBar}>
+        <View style={[styles.topBar, {top: insets.top + 8}]}>
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
             <Text style={styles.backBtnText}>←</Text>
           </TouchableOpacity>
@@ -187,13 +246,13 @@ export default function ReelsScreen({navigation}: any) {
             </TouchableOpacity>
 
             {/* COMMENT */}
-            <TouchableOpacity style={styles.actionBtn}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => openComments(item)}>
               <Text style={styles.actionIcon}>💬</Text>
               <Text style={styles.actionCount}>{item.comments || 0}</Text>
             </TouchableOpacity>
 
             {/* SHARE */}
-            <TouchableOpacity style={styles.actionBtn}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => shareReel(item)}>
               <Text style={styles.actionIcon}>↗️</Text>
               <Text style={styles.actionCount}>Share</Text>
             </TouchableOpacity>
@@ -266,6 +325,56 @@ export default function ReelsScreen({navigation}: any) {
           index,
         })}
       />
+
+      {/* ── Comment Modal ── */}
+      <Modal visible={commentModalVisible} animationType="slide" transparent>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{flex: 1}}>
+          <View style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.7)'}}>
+            <View style={{flex: 1, marginTop: 100, backgroundColor: '#0A0A0A', borderTopLeftRadius: 20, borderTopRightRadius: 20}}>
+              <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#2A2A2A'}}>
+                <Text style={{color: '#FFF', fontSize: 18, fontWeight: 'bold'}}>💬 Comments</Text>
+                <TouchableOpacity onPress={() => setCommentModalVisible(false)}>
+                  <Text style={{color: '#C9956C', fontSize: 16}}>Close</Text>
+                </TouchableOpacity>
+              </View>
+
+              <FlatList
+                data={comments}
+                keyExtractor={item => item.id}
+                style={{flex: 1}}
+                ListEmptyComponent={<Text style={{color: '#A09080', textAlign: 'center', marginTop: 40, fontSize: 14}}>No comments yet</Text>}
+                renderItem={({item}: any) => (
+                  <View style={{padding: 12, borderBottomWidth: 1, borderBottomColor: '#1C1C1C', flexDirection: 'row', gap: 10}}>
+                    <View style={{width: 32, height: 32, borderRadius: 16, backgroundColor: '#C9956C', justifyContent: 'center', alignItems: 'center'}}>
+                      <Text style={{color: '#FFF', fontWeight: 'bold', fontSize: 14}}>{(item.userName || 'U').charAt(0).toUpperCase()}</Text>
+                    </View>
+                    <View style={{flex: 1}}>
+                      <Text style={{color: '#C9956C', fontSize: 13, fontWeight: '600'}}>{item.userName || 'User'}</Text>
+                      <Text style={{color: '#FFF', fontSize: 14, marginTop: 2}}>{item.text}</Text>
+                    </View>
+                  </View>
+                )}
+              />
+
+              <View style={{flexDirection: 'row', padding: 12, borderTopWidth: 1, borderTopColor: '#2A2A2A', gap: 8}}>
+                <TextInput
+                  value={commentText}
+                  onChangeText={setCommentText}
+                  placeholder="Write a comment..."
+                  placeholderTextColor="#6B5D52"
+                  style={{flex: 1, backgroundColor: '#1C1C1C', color: '#FFF', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10}}
+                />
+                <TouchableOpacity
+                  onPress={postComment}
+                  disabled={postingComment || !commentText.trim()}
+                  style={{backgroundColor: commentText.trim() ? '#C9956C' : '#2A2A2A', borderRadius: 20, paddingHorizontal: 20, justifyContent: 'center'}}>
+                  <Text style={{color: '#FFF', fontWeight: 'bold'}}>{postingComment ? '...' : 'Post'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }

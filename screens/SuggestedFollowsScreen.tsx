@@ -6,6 +6,7 @@ import {
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const C = {
   background: '#0A0A0A',
@@ -25,6 +26,7 @@ const cleanName = (raw: string | null | undefined): string => {
 };
 
 export default function SuggestedFollowsScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [followed, setFollowed] = useState<Set<string>>(new Set());
@@ -154,7 +156,7 @@ export default function SuggestedFollowsScreen({navigation}: any) {
           data={users}
           keyExtractor={item => item.id}
           renderItem={renderUser}
-          contentContainerStyle={{padding: 16, paddingBottom: 120}}
+          contentContainerStyle={{padding: 16, paddingBottom: insets.bottom + 80}}
           showsVerticalScrollIndicator={false}
         />
       )}

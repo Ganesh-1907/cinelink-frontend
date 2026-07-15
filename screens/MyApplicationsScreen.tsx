@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
+  SafeAreaView,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
@@ -79,6 +80,7 @@ export default function MyApplicationsScreen({navigation}: any) {
   const rejectedCount = applications.filter(a => a.status === 'Rejected').length;
 
   return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <ScrollView
       style={styles.container}
       refreshControl={
@@ -209,6 +211,7 @@ export default function MyApplicationsScreen({navigation}: any) {
         )}
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

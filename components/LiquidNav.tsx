@@ -1,5 +1,6 @@
 import React from 'react';
 import {View, TouchableOpacity, Text, StyleSheet} from 'react-native';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const TABS = [
   {icon: '🏠', label: 'Home', screen: 'Home'},
@@ -10,13 +11,14 @@ const TABS = [
 ];
 
 export function LiquidNav({navigation, activeTab}: any) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={{
       flexDirection: 'row',
       backgroundColor: '#0A0A0A',
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: 'rgba(201,149,108,0.45)',
-      paddingBottom: 10,
+      paddingBottom: insets.bottom + 8,
       paddingTop: 8,
     }}>
       {TABS.map((tab, i) => (

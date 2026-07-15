@@ -10,6 +10,8 @@ import PremiumBadge from '../src/components/Premium/PremiumBadge';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import {launchImageLibrary} from 'react-native-image-picker';
+import {uploadImage} from '../src/services/uploadService';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const cleanName = (raw: string | null | undefined): string => {
   if (!raw) return 'User';
@@ -23,8 +25,19 @@ const QUICK_EMOJIS = [
 ];
 
 export default function ChatScreen({route, navigation}: any) {
-  const {chat} = route.params;
+  const insets = useSafeAreaInsets();
+  const chat = route?.params?.chat;
   const currentUser = auth().currentUser;
+
+  useEffect(() => { if (!chat?.id) { navigation.goBack(); } }, []);
+
+  useEffect(() => {
+    return () => {
+      if (chat?.id && currentUser?.uid) {
+        firestore().collection('chats').doc(chat.id).update({typingUser: null}).catch(() => {});
+      }
+    };
+  }, [chat?.id, currentUser?.uid]);
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
 
@@ -294,19 +307,15 @@ const unsendMessage = async (messageId: string) => {
   };
   const pickImage = async () => {
     const result = await launchImageLibrary({mediaType: 'photo', quality: 0.7});
-    if (result.assets && result.assets[0]?.uri) uploadImage(result.assets[0].uri);
+    if (result.assets && result.assets[0]?.uri) uploadChatImage(result.assets[0].uri);
   };
 
-  const uploadImage = async (imageUri: string) => {
+  const uploadChatImage = async (imageUri: string) => {
     try {
-      const data = new FormData();
-      data.append('file', {uri: imageUri, type: 'image/jpeg', name: 'chat.jpg'} as any);
-      data.append('upload_preset', 'cinelink_upload');
-      const response = await fetch('https://api.cloudinary.com/v1_1/dipwobgzb/image/upload', {method: 'POST', body: data});
-      const fileData = await response.json();
+      const fileData = await uploadImage(imageUri);
       await firestore().collection('chats').doc(chat.id).collection('messages').add({
         type:        'image',
-        imageUrl:    fileData.secure_url,
+        imageUrl:    fileData.secureUrl,
         senderId:    currentUser?.uid,
         senderEmail: currentUser?.email,
         senderName:  currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User',
@@ -462,14 +471,12 @@ const unsendMessage = async (messageId: string) => {
     );
   };
 
-  const statusBarHeight = StatusBar.currentHeight ?? 24;
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1C1C1C" />
 
       {/* HEADER */}
-      <View style={[styles.header, {paddingTop: Platform.OS === 'ios' ? 54 : statusBarHeight + 12}]}>
+      <View style={[styles.header, {paddingTop: insets.top + 8}]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backWrapper}>
           <Text style={styles.backButton}>←</Text>
         </TouchableOpacity>

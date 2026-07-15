@@ -8,8 +8,8 @@ import {
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import PremiumBadge from '../src/components/Premium/PremiumBadge';
-
-const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+import {ADMIN_EMAIL} from '../src/api/config';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const cleanName = (raw: string | null | undefined): string => {
   if (!raw) return 'Creator';
@@ -178,7 +178,7 @@ function DiscoverEngagementBar({
       .collection('comments')
       .onSnapshot(
         snap => setCommentCount(snap.size),
-        err  => console.log('comment count error:', err.code),
+        err  => console.log('comment count error:', err),
       );
     return () => unsub();
   }, [userId, showSheet]);

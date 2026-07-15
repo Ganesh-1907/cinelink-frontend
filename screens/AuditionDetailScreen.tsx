@@ -11,13 +11,12 @@ import {
   Image,
   Linking,
   TextInput,
+  SafeAreaView,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import {LiquidPress} from '../components/LiquidPress';
-
-const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
-const ADMIN_UID   = 'moVQIEK5RqhXUOf4wk1L7913kZZ2';
+import {ADMIN_EMAIL, ADMIN_UID} from '../src/api/config';
 
 const cleanName = (raw: string | null | undefined): string => {
   if (!raw) return 'User';
@@ -149,6 +148,7 @@ export default function AuditionDetailScreen({route, navigation}: any) {
   };
 
   const loadDirectorProfile = async () => {
+    if (!audition?.directorId) return;
     try {
       const doc = await firestore().collection('users').doc(audition.directorId).get();
       if (doc.exists) setDirectorProfile(doc.data());
@@ -156,7 +156,7 @@ export default function AuditionDetailScreen({route, navigation}: any) {
   };
 
 const notifyDirector = async () => {
-  if (audition.directorId === user?.uid) return;
+  if (!audition?.directorId || audition.directorId === user?.uid) return;
   try {
     // Check if already notified this user for this audition today
     const today = new Date();
@@ -416,6 +416,7 @@ const startChat = async () => {
   }
 
   return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <ScrollView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
@@ -758,9 +759,10 @@ const startChat = async () => {
         </View>
 
       </View>
-    </ScrollView>
-  );
-}
+      </ScrollView>
+    </SafeAreaView>
+    );
+  }
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#0A0A0A'},

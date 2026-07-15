@@ -1,26 +1,17 @@
-// @ts-ignore — react-native-razorpay has no bundled TS types
+/**
+ * razorpaySubscriptionService.ts
+ *
+ * Client-side service for initiating premium subscription checkout via the backend API.
+ * The backend creates the Razorpay subscription server-side to keep API secrets safe.
+ * On success, the Razorpay webhook handler on the backend verifies payment and
+ * updates Firestore premium fields using the Admin SDK.
+ */
+
+// @ts-ignore
 import RazorpayCheckout from 'react-native-razorpay';
 import auth from '@react-native-firebase/auth';
+import api from '../api/client';
 import type {PremiumTier} from '../types';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// RAZORPAY KEY ID (test mode)
-// This key is already used in screens/PaymentScreen.tsx for one-off contest payments.
-// Switch to rzp_live_XXXXXXXXXX here AND in PaymentScreen.tsx when going live.
-// Found at: Razorpay Dashboard → Settings → API Keys → Test Key ID
-// ─────────────────────────────────────────────────────────────────────────────
-const RAZORPAY_KEY_ID = 'rzp_test_SuJZOYDYUYgzIY';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CLOUD FUNCTION URL
-// After deploying (firebase deploy --only functions), find this URL at:
-//   Firebase Console → Functions → createRazorpaySubscription → Trigger URL
-// Or it prints to terminal on deploy. Region is asia-south1 (from your firebase.json).
-//
-// Format: https://asia-south1-YOUR_PROJECT_ID.cloudfunctions.net/createRazorpaySubscription
-// ─────────────────────────────────────────────────────────────────────────────
-const CREATE_SUBSCRIPTION_FUNCTION_URL =
-  'https://asia-south1-REPLACE_WITH_YOUR_PROJECT_ID.cloudfunctions.net/createRazorpaySubscription';
 
 export type SubscriptionCheckoutResult =
   | {status: 'success'; paymentId: string; subscriptionId: string}
@@ -31,76 +22,39 @@ export type SubscriptionCheckoutResult =
  * Opens Razorpay checkout for a premium subscription.
  *
  * Flow:
- *   1. Get Firebase ID token (to authenticate the Cloud Function call)
- *   2. Call Cloud Function → returns a Razorpay subscription_id created server-side
+ *   1. Get Firebase ID token (sent automatically by api client)
+ *   2. Call backend API to create a Razorpay subscription server-side
  *   3. Pass subscription_id to RazorpayCheckout.open()
- *   4. On success, return paymentId + subscriptionId (server webhook handles Firestore write)
+ *   4. Return result (webhook handles Firestore write server-side)
  */
 export async function initiateSubscriptionCheckout(
   tier: Exclude<PremiumTier, 'none' | 'black'>,
   userId: string,
 ): Promise<SubscriptionCheckoutResult> {
-  // Guard: refuse immediately if the Cloud Function URL is still the placeholder.
-  // Without this, fetch() resolves to a GCP generic endpoint, returns a non-OK
-  // response, and the function returns status:'error' — which the caller surfaces
-  // as an Alert that appears to pop up automatically on screen load.
-  if (CREATE_SUBSCRIPTION_FUNCTION_URL.includes('REPLACE_WITH_YOUR_PROJECT_ID')) {
-    return {
-      status: 'error',
-      message:
-        'Subscription service is not yet configured. Please contact support or check back later.',
-    };
-  }
-
   const user = auth().currentUser;
   if (!user) {
     return {status: 'error', message: 'You must be logged in to subscribe.'};
   }
 
   try {
-    // ── Step 1: Firebase ID token for authenticating the Cloud Function ──────
-    const idToken = await user.getIdToken();
-    console.log('[RazorpaySubscription] Creating subscription for tier:', tier);
-
-    // ── Step 2: Call Cloud Function to create subscription server-side ───────
-    // The Cloud Function calls the Razorpay API using the secret key (never on client),
-    // creates a subscription against the correct plan_id, and returns the subscription_id.
-    const response = await fetch(CREATE_SUBSCRIPTION_FUNCTION_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${idToken}`,
-      },
-      // Firebase callable functions expect: {"data": {...}}
-      body: JSON.stringify({data: {tier, userId}}),
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      console.error('[RazorpaySubscription] Cloud Function error:', response.status, body);
-      return {status: 'error', message: 'Could not create subscription. Please try again.'};
-    }
-
-    const json = await response.json();
-    // Firebase callable functions return: {"result": {...}}
-    const subscriptionId: string | undefined = json.result?.subscriptionId;
+    // ── Step 1: Create subscription via backend API ──────────────────────
+    const result = await api.post('/payments/create-subscription', {tier, userId});
+    const subscriptionId: string = result.subscriptionId;
+    const keyId: string = result.keyId;
 
     if (!subscriptionId) {
-      console.error('[RazorpaySubscription] Missing subscriptionId in response:', json);
-      return {status: 'error', message: 'Server returned an invalid response. Please contact support.'};
+      return {status: 'error', message: 'Server returned an invalid response.'};
     }
 
-    console.log('[RazorpaySubscription] Got subscriptionId:', subscriptionId, '— opening checkout');
-
-    // ── Step 3: Open Razorpay checkout ───────────────────────────────────────
+    // ── Step 2: Open Razorpay checkout ──────────────────────────────────
     const options = {
-      key:             RAZORPAY_KEY_ID,
-      subscription_id: subscriptionId,   // subscription flow — no "amount" field
-      name:            'CineLink',
-      description:     `CineLink ${tier} subscription`,
+      key: keyId,
+      subscription_id: subscriptionId,
+      name: 'CineLink',
+      description: `CineLink ${tier} subscription`,
       prefill: {
-        name:    user.displayName || '',
-        email:   user.email || '',
+        name: user.displayName || '',
+        email: user.email || '',
         contact: '',
       },
       theme: {color: '#D4AF37'},
@@ -109,12 +63,11 @@ export async function initiateSubscriptionCheckout(
     return new Promise<SubscriptionCheckoutResult>(resolve => {
       RazorpayCheckout.open(options)
         .then((data: {razorpay_payment_id: string; razorpay_subscription_id: string}) => {
-          console.log('[RazorpaySubscription] Checkout success — paymentId:', data.razorpay_payment_id);
           // ⚠ Do NOT write premiumTier to Firestore here from the client.
-          // The Razorpay webhook Cloud Function (Step 3 of the premium system)
-          // verifies the payment server-side via webhook signature and writes
-          // to Firestore using the Admin SDK. Trusting the client would allow
-          // users to grant themselves premium by replaying this call.
+          // The Razorpay webhook handler on the backend verifies the payment
+          // server-side via webhook signature and writes to Firestore using
+          // the Admin SDK. Trusting the client would allow users to grant
+          // themselves premium by replaying this call.
           resolve({
             status: 'success',
             paymentId: data.razorpay_payment_id,
@@ -123,11 +76,8 @@ export async function initiateSubscriptionCheckout(
         })
         .catch((error: {code: number; description?: string}) => {
           if (error.code === 2) {
-            // Razorpay code 2 = user pressed back/dismissed checkout
-            console.log('[RazorpaySubscription] User cancelled checkout.');
             resolve({status: 'cancelled'});
           } else {
-            console.error('[RazorpaySubscription] Checkout failed:', error);
             resolve({
               status: 'error',
               message: error.description || 'Payment failed. Please try again.',
@@ -136,7 +86,7 @@ export async function initiateSubscriptionCheckout(
         });
     });
   } catch (err: any) {
-    console.error('[RazorpaySubscription] Unexpected error:', err);
+    console.error('[RazorpaySubscription] Error:', err);
     return {status: 'error', message: err?.message || 'Something went wrong. Please try again.'};
   }
 }

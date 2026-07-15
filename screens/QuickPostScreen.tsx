@@ -6,9 +6,7 @@ import {
 import {launchImageLibrary} from 'react-native-image-picker';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
-
-const GEMINI_API_KEY = 'AIzaSyAIAb0bUWvHZHR1YE6_pVKI45JQJ5owA4g';
-const GEMINI_VISION_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+import api from '../src/api/client';
 
 type AuditionForm = {
   title: string; role: string; location: string; lastDate: string;
@@ -75,7 +73,7 @@ export default function QuickPostScreen({navigation}: any) {
     }
   };
 
-  /* ── SCAN WITH AI ── */
+  /* ── SCAN WITH AI (via backend API) ── */
   const scanWithAI = async () => {
     if (!imageBase64) {
       Alert.alert('No Image', 'Please pick an audition poster first.');
@@ -85,62 +83,13 @@ export default function QuickPostScreen({navigation}: any) {
     setScanning(true);
 
     try {
-      const prompt = `You are analyzing an Indian cinema audition poster.
-Extract ALL visible information and return ONLY a valid JSON object with these exact keys:
-{"title":"","role":"","location":"","lastDate":"","description":"","requirements":"","contactInfo":"","gender":"","ageRange":"","language":""}
-Rules: No markdown, no explanation, no code blocks. Only the JSON object. If a field is not visible, use empty string.`;
+      // Use backend API — the Gemini API key is on the server, not in the app
+      const result = await api.post('/ai/scan-audition-poster', {
+        imageBase64,
+        mimeType: 'image/jpeg',
+      });
 
-      const requestBody = {
-        contents: [{
-          parts: [
-            {inline_data: {mime_type: 'image/jpeg', data: imageBase64}},
-            {text: prompt},
-          ],
-        }],
-        generationConfig: {temperature: 0.1, maxOutputTokens: 500},
-      };
-
-      /* ── safe fetch ── */
-      let responseText = '';
-      try {
-        const response = await fetch(GEMINI_VISION_URL, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(requestBody),
-        });
-
-        const responseData = await response.json();
-
-        if (!response.ok) {
-          const errMsg =
-            responseData?.error?.message ||
-            responseData?.message ||
-            `API Error ${response.status}`;
-          throw new Error(errMsg);
-        }
-
-        responseText =
-          responseData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      } catch (fetchErr) {
-        throw new Error(`Network error: ${getErrorMessage(fetchErr)}`);
-      }
-
-      if (!responseText) {
-        throw new Error('AI returned empty response. Try again.');
-      }
-
-      /* ── safe JSON parse ── */
-      let parsed: any = {};
-      try {
-        const cleaned = responseText
-          .replace(/```json/g, '')
-          .replace(/```/g, '')
-          .trim();
-        parsed = JSON.parse(cleaned);
-      } catch {
-        throw new Error('AI could not read the poster clearly. Try a clearer image.');
-      }
-
+      const parsed = result.form;
       setForm({
         title:        String(parsed.title        || ''),
         role:         String(parsed.role         || ''),
@@ -155,13 +104,11 @@ Rules: No markdown, no explanation, no code blocks. Only the JSON object. If a f
       });
 
       setAiDone(true);
-
-    } catch (e) {
+    } catch (e: any) {
       console.log('AI Scan error:', e);
       Alert.alert(
         '❌ AI Scan Failed',
-        getErrorMessage(e) ||
-        'Could not read the poster. Please try a clearer image or fill the form manually.',
+        e?.message || 'Could not read the poster. Try a clearer image or fill manually.',
       );
     } finally {
       setScanning(false);

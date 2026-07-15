@@ -5,8 +5,7 @@ import {
   ActivityIndicator, SafeAreaView, StatusBar,
 } from 'react-native';
 
-const GEMINI_API_KEY = 'AIzaSyAIAb0bUWvHZHR1YE6_pVKI45JQJ5owA4g';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+import api from '../src/api/client';
 
 const SYSTEM_CONTEXT = `You are CineLink AI — an expert assistant for Indian cinema creators.
 You help actors, directors, and short film makers with:
@@ -77,38 +76,16 @@ export default function AIAssistantScreen() {
         .filter(m => m.id !== '0')
         .map(m => ({
           role: m.role === 'user' ? 'user' : 'model',
-          parts: [{text: m.text}],
+          text: m.text,
         }));
 
-      const body = {
-        contents: [
-          {role: 'user', parts: [{text: SYSTEM_CONTEXT}]},
-          {role: 'model', parts: [{text: 'Understood! I am CineLink AI, ready to help.'}]},
-          ...history,
-          {role: 'user', parts: [{text: userText}]},
-        ],
-        generationConfig: {temperature: 0.7, maxOutputTokens: 600},
-      };
-
-      const response = await fetch(GEMINI_URL, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body),
+      // Use backend API — Gemini key is on the server
+      const result = await api.post('/ai/chat', {
+        message: userText,
+        history,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        const errMsg =
-          data?.error?.message ||
-          data?.message ||
-          `API Error ${response.status}`;
-        throw new Error(errMsg);
-      }
-
-      const aiText =
-        data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-        'Sorry, I could not generate a response. Please try again.';
+      const aiText = result.reply || 'Sorry, I could not generate a response. Please try again.';
 
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),

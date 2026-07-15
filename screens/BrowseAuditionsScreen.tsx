@@ -2,11 +2,13 @@
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, RefreshControl,
-  Animated, ScrollView, Alert,
+  Animated, ScrollView, Alert, SafeAreaView,
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import EngagementBar from '../components/EngagementBar';
+import {ADMIN_EMAIL} from '../src/api/config';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 function SkeletonBlock({width, height, style}: any) {
   const shimmer = useState(new Animated.Value(0.3))[0];
@@ -37,7 +39,6 @@ function SkeletonCard() {
 }
 
 const ROLES = ['All', 'Hero', 'Heroine', 'Villain', 'Supporting', 'Child Artist', 'Comedian', 'Any Role'];
-const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
 
 const CATEGORY_COLORS: Record<string, {bg: string; text: string; border: string}> = {
   'Movies':        {bg: 'rgba(201,149,108,0.15)', text: '#C9956C', border: 'rgba(201,149,108,0.5)'},
@@ -58,6 +59,7 @@ const getDaysLeft = (dateStr: string) => {
 };
 
 export default function BrowseAuditionsScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const currentUser = auth().currentUser;
   const isAdmin = currentUser?.email === ADMIN_EMAIL;
   const [auditions, setAuditions] = useState<any[]>([]);
@@ -304,7 +306,7 @@ const onRefresh = useCallback(async () => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
 
       {/* HEADER */}
       <View style={styles.header}>
@@ -376,7 +378,7 @@ const onRefresh = useCallback(async () => {
           data={filtered}
           keyExtractor={item => item.id}
           renderItem={renderCard}
-          contentContainerStyle={{padding: 16, paddingBottom: 100}}
+          contentContainerStyle={{padding: 16, paddingBottom: insets.bottom + 80}}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -390,7 +392,7 @@ const onRefresh = useCallback(async () => {
         />
       )}
 
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -398,7 +400,7 @@ const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#0A0A0A'},
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingTop: 52, paddingBottom: 14,
+    paddingHorizontal: 16, paddingBottom: 14,
     backgroundColor: '#0A0A0A', gap: 12,
   },
   backBtn: {

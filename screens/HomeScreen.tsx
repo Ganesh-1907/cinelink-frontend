@@ -24,10 +24,9 @@ import {LiquidPress} from '../components/LiquidPress';
 import EngagementBar from '../components/EngagementBar';
 import {RippleIcon} from '../components/RippleIcon';
 import {CrownIcon} from '../components/CrownIcon';
-
-const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
-const CLOUD_NAME = 'dipwobgzb';
-const UPLOAD_PRESET = 'cinelink_upload';
+import {ADMIN_EMAIL, FILTER_TAGS, CATEGORY_COLORS} from '../src/api/config';
+import {uploadImage} from '../src/services/uploadService';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const C = {
   background:    '#0A0A0A',
@@ -178,8 +177,6 @@ function AvatarRing({photoUrl, name, size = 52, ringColor = C.roseGold, verified
   );
 }
 
-const FILTER_TAGS = ['All', 'Actor', 'Director', 'Writer', 'Mumbai', 'Delhi', 'Bollywood'];
-
 function FilterPills({active, onSelect}: {active: string; onSelect: (t: string) => void}) {
   return (
     <ScrollView
@@ -277,14 +274,6 @@ function ProfileCard({item, navigation}: any) {
     </View>
   );
 }
-
-const CATEGORY_COLORS: Record<string, {bg: string; text: string; border: string}> = {
-  'Movies':        {bg: 'rgba(201,149,108,0.15)', text: '#C9956C', border: 'rgba(201,149,108,0.5)'},
-  'Short Films':   {bg: 'rgba(74,222,128,0.10)',  text: '#4ADE80', border: 'rgba(74,222,128,0.4)'},
-  'Theatre':       {bg: 'rgba(129,140,248,0.10)', text: '#818CF8', border: 'rgba(129,140,248,0.4)'},
-  'YouTube / Web': {bg: 'rgba(248,113,113,0.10)', text: '#F87171', border: 'rgba(248,113,113,0.4)'},
-  'TV / OTT':      {bg: 'rgba(251,191,36,0.10)',  text: '#FBBF24', border: 'rgba(251,191,36,0.4)'},
-};
 
 function AuditionCard({item, navigation}: any) {
   const formatTime = (ts: any) => {
@@ -635,6 +624,7 @@ function PostBubble({item, isAdmin, onDelete, navigation}: any) {
 }
 
 export default function HomeScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const [selectedTab, setSelectedTab] = useState('Auditions');
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchText, setSearchText] = useState('');
@@ -846,13 +836,8 @@ export default function HomeScreen({navigation}: any) {
     try {
       let imageUrl = '';
       if (postImage) {
-        const formData = new FormData();
-        formData.append('file', {uri: postImage, type: 'image/jpeg', name: 'post.jpg'} as any);
-        formData.append('upload_preset', UPLOAD_PRESET);
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {method: 'POST', body: formData});
-        const data = await res.json();
-        if (!data.secure_url) throw new Error('Cloudinary upload failed');
-        imageUrl = data.secure_url;
+        const result = await uploadImage(postImage);
+        imageUrl = result.secureUrl;
       }
       await firestore().collection('feedPosts').add({
         tab, text: postText.trim(), posterUrl: imageUrl,
@@ -1272,7 +1257,7 @@ export default function HomeScreen({navigation}: any) {
   </View>
 )}
 
-          <View style={{paddingBottom: 100}}>
+          <View style={{paddingBottom: insets.bottom + 80}}>
             {selectedTab === 'Auditions'   && renderFeed('auditions')}
             {selectedTab === 'General'     && renderFeed('general')}
             {selectedTab === 'Short Films' && renderFilms()}

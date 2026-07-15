@@ -4,11 +4,14 @@ import crashlytics from '@react-native-firebase/crashlytics';
 import ImageViewerScreen from './screens/ImageViewerScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Text, View, ActivityIndicator, StatusBar, Alert} from 'react-native';
+import ErrorBoundary from './components/ErrorBoundary';
+import { AppProvider } from './src/context/AppContext';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNavigationContainerRef} from '@react-navigation/native';
 import {setNavigator, registerBackgroundHandler} from './src/services/NotificationService';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
+import {SafeAreaProvider} from 'react-native-safe-area-context';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import {initNotifications} from './src/services/NotificationService';
@@ -50,6 +53,8 @@ import ProjectDetailScreen from './screens/ProjectDetailScreen';
 import JoinRequestsScreen from './screens/JoinRequestsScreen';
 import PrivacyPolicyScreen from './screens/PrivacyPolicyScreen';
 import TermsScreen from './screens/TermsScreen';
+import ReelsScreen from './screens/ReelsScreen';
+import UploadReelsScreen from './screens/UploadReelsScreen';
 import FollowersScreen from './screens/FollowersScreen';
 import FeedbackModal from './screens/FeedbackModal';
 import IndustryGuideScreen from './screens/IndustryGuideScreen';
@@ -183,6 +188,8 @@ function MainStack() {
       <Stack.Screen name="Followers"        component={FollowersScreen}        options={{headerShown: false}} />
       <Stack.Screen name="IndustryGuide"    component={IndustryGuideScreen}    options={{headerShown: false}} />
       <Stack.Screen name="PremiumCineLink" component={PremiumCineLinkScreen}  options={{headerShown: false}} />
+      <Stack.Screen name="ReelsScreen"     component={ReelsScreen}            options={{headerShown: false, animation: 'fade'}} />
+      <Stack.Screen name="UploadReels"     component={UploadReelsScreen}      options={{title: 'Upload Reel'}} />
     </Stack.Navigator>
   );
 }
@@ -311,10 +318,14 @@ function App(): JSX.Element {
   if (loading || showOnboarding === null) {
     return (
       <GestureHandlerRootView style={{flex: 1}}>
-        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background}}>
-          <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-          <ActivityIndicator size="large" color={COLORS.primary} />
-        </View>
+        <SafeAreaProvider>
+          <ErrorBoundary>
+            <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background}}>
+              <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+              <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+          </ErrorBoundary>
+        </SafeAreaProvider>
       </GestureHandlerRootView>
     );
   }
@@ -323,8 +334,12 @@ function App(): JSX.Element {
   if (showOnboarding) {
     return (
       <GestureHandlerRootView style={{flex: 1}}>
-        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-        <OnboardingScreen onDone={() => setShowOnboarding(false)} />
+        <SafeAreaProvider>
+          <ErrorBoundary>
+            <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+            <OnboardingScreen onDone={() => setShowOnboarding(false)} />
+          </ErrorBoundary>
+        </SafeAreaProvider>
       </GestureHandlerRootView>
     );
   }
@@ -333,17 +348,21 @@ function App(): JSX.Element {
   if (user && showSuggestedFollows) {
     return (
       <GestureHandlerRootView style={{flex: 1}}>
-        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-        <SuggestedFollowsScreen
-          navigation={{
-            replace: async () => {
-              await AsyncStorage.setItem('suggested_follows_done', 'true');
-              setShowSuggestedFollows(false);
-            },
-            goBack: () => setShowSuggestedFollows(false),
-          }}
-          route={{params: {}}}
-        />
+        <SafeAreaProvider>
+          <ErrorBoundary>
+            <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+            <SuggestedFollowsScreen
+              navigation={{
+                replace: async () => {
+                  await AsyncStorage.setItem('suggested_follows_done', 'true');
+                  setShowSuggestedFollows(false);
+                },
+                goBack: () => setShowSuggestedFollows(false),
+              }}
+              route={{params: {}}}
+            />
+          </ErrorBoundary>
+        </SafeAreaProvider>
       </GestureHandlerRootView>
     );
   }
@@ -351,16 +370,22 @@ function App(): JSX.Element {
   // ── Main App ──────────────────────────────────────────────
   return (
     <GestureHandlerRootView style={{flex: 1}}>
-      <NavigationContainer ref={navigationRef} onReady={() => setNavigator(navigationRef)}>
-        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-        {user ? <MainStack /> : <AuthStack />}
+      <SafeAreaProvider>
+        <AppProvider>
+          <ErrorBoundary>
+            <NavigationContainer ref={navigationRef} onReady={() => setNavigator(navigationRef)}>
+              <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+              {user ? <MainStack /> : <AuthStack />}
 
-        {/* ── Feedback Modal — shown once after 1 hour ── */}
-        <FeedbackModal
-          visible={showFeedback}
-          onClose={() => setShowFeedback(false)}
-        />
-      </NavigationContainer>
+              {/* ── Feedback Modal — shown once after 1 hour ── */}
+              <FeedbackModal
+                visible={showFeedback}
+                onClose={() => setShowFeedback(false)}
+              />
+            </NavigationContainer>
+          </ErrorBoundary>
+        </AppProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

@@ -1,7 +1,8 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useRef} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, Image, Linking, Alert, Animated, Share, Dimensions,
+  SafeAreaView,
 } from 'react-native';
 import ImageViewing from 'react-native-image-viewing';
 import firestore from '@react-native-firebase/firestore';
@@ -9,9 +10,7 @@ import auth from '@react-native-firebase/auth';
 import {LiquidPress} from '../components/LiquidPress';
 import {RippleIcon} from '../components/RippleIcon';
 import PremiumBadge from '../src/components/Premium/PremiumBadge';
-
-const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
-const ADMIN_UID   = 'moVQIEK5RqhXUOf4wk1L7913kZZ2';
+import {ADMIN_EMAIL, ADMIN_UID} from '../src/api/config';
 
 const SCREEN_W  = Dimensions.get('window').width;
 const GRID_GAP  = 2;
@@ -23,9 +22,11 @@ const cleanName = (raw: string | null | undefined): string => {
 };
 
 const PublicProfileScreen = ({route, navigation}: any) => {
-  const {userId} = route.params;
+  const userId = route?.params?.userId;
   const currentUser = auth().currentUser;
   const isAdmin     = currentUser?.email === ADMIN_EMAIL || currentUser?.uid === ADMIN_UID;
+
+  useEffect(() => { if (!userId) { navigation.goBack(); } }, []);
 
   const [userData, setUserData]             = useState<any>(null);
   const [loading, setLoading]               = useState(true);
@@ -47,8 +48,8 @@ const PublicProfileScreen = ({route, navigation}: any) => {
 
   // ── Toast state ───────────────────────────────────────────
   const [toastVisible, setToastVisible] = useState(false);
-  const toastOpacity = useState(new Animated.Value(0))[0];
-  const skeletonOpacity = useState(new Animated.Value(0.3))[0];
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const skeletonOpacity = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -408,7 +409,7 @@ const PublicProfileScreen = ({route, navigation}: any) => {
   const canMessage = isConnected || isAdmin;
 
   return (
-    <>
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
       {toastVisible && (
         <Animated.View style={[styles.toastBanner, {opacity: toastOpacity}]}>
           <Text style={styles.toastText}>Request sent! ✅ You'll be notified when they accept</Text>
@@ -769,7 +770,7 @@ const PublicProfileScreen = ({route, navigation}: any) => {
         doubleTapToZoomEnabled
         backgroundColor="black"
       />
-    </>
+    </SafeAreaView>
   );
 };
 

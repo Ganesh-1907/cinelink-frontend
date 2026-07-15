@@ -6,8 +6,8 @@ import {
 } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
-
-const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+import {ADMIN_EMAIL} from '../src/api/config';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const C = {
   background:   '#0A0A0A',
@@ -27,6 +27,7 @@ const cleanName = (raw: string | null | undefined): string => {
 };
 
 export default function CrewScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const [results, setResults]       = useState<any[]>([]);
   const [loading, setLoading]       = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -324,7 +325,7 @@ export default function CrewScreen({navigation}: any) {
           data={results}
           keyExtractor={item => item.id}
           renderItem={renderUser}
-          contentContainerStyle={{padding: 16, paddingBottom: 100}}
+          contentContainerStyle={{padding: 16, paddingBottom: insets.bottom + 80}}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <Text style={styles.resultsCount}>

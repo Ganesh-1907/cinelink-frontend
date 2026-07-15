@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  SafeAreaView,
   TouchableOpacity,
   Image,
   ActivityIndicator,
@@ -46,6 +47,7 @@ export default function MyFilmsScreen({navigation}: any) {
   };
 
   return (
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <ScrollView style={styles.container}>
       <View style={styles.section}>
 
@@ -146,6 +148,7 @@ export default function MyFilmsScreen({navigation}: any) {
         )}
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

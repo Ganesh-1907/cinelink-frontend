@@ -6,13 +6,13 @@ import {
 import {launchImageLibrary} from 'react-native-image-picker';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
-
-const CLOUD_NAME = 'dipwobgzb';
-const UPLOAD_PRESET = 'cinelink_upload';
+import {uploadImage} from '../src/services/uploadService';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const STEPS = ['Basic Info', 'ID Proof', 'Phone Verify', 'Submit'];
 
 export default function CastingRequestScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const [currentStep, setCurrentStep] = useState(0);
 
   // Step 1 — Basic Info
@@ -58,15 +58,8 @@ export default function CastingRequestScreen({navigation}: any) {
   };
 
   const uploadToCloudinary = async (uri: string): Promise<string> => {
-    const formData = new FormData();
-    formData.append('file', {uri, type: 'image/jpeg', name: 'photo.jpg'} as any);
-    formData.append('upload_preset', UPLOAD_PRESET);
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-      {method: 'POST', body: formData},
-    );
-    const data = await res.json();
-    return data.secure_url;
+    const result = await uploadImage(uri);
+    return result.secureUrl;
   };
 
   const pickIdPhoto = async () => {
@@ -274,7 +267,7 @@ const submitRequest = async () => {
   // ── Main form ─────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.scroll, {paddingBottom: insets.bottom + 40}]} keyboardShouldPersistTaps="handled">
 
         {/* HEADER */}
         <View style={styles.header}>
@@ -589,7 +582,7 @@ const submitRequest = async () => {
 const styles = StyleSheet.create({
   container:        {flex: 1, backgroundColor: '#0A0A0A'},
   loadingContainer: {flex: 1, backgroundColor: '#0A0A0A', justifyContent: 'center', alignItems: 'center'},
-  scroll:           {padding: 20, paddingBottom: 60},
+  scroll:           {padding: 20},
 
   header:         {alignItems: 'center', marginBottom: 20},
   headerTitle:    {color: '#FFFFFF', fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 8},

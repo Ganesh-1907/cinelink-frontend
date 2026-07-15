@@ -12,6 +12,7 @@ import {
   Alert,
   Share,
   Dimensions,
+  SafeAreaView,
 } from 'react-native';
 import ImageViewing from 'react-native-image-viewing';
 import {launchImageLibrary, launchCamera, ImagePickerResponse} from 'react-native-image-picker';
@@ -21,10 +22,9 @@ import {useFocusEffect} from '@react-navigation/native';
 import ProfileCompletionCard from './ProfileCompletionCard';
 import {usePremiumStatus} from '../hooks/usePremiumStatus';
 import PremiumBadge from '../src/components/Premium/PremiumBadge';
-
-const ADMIN_EMAIL   = 'anilkumardevarakonda03@gmail.com';
-const CLOUD_NAME    = 'dipwobgzb';
-const UPLOAD_PRESET = 'cinelink_upload';
+import {ADMIN_EMAIL} from '../src/api/config';
+import {uploadImage} from '../src/services/uploadService';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const SCREEN_W  = Dimensions.get('window').width;
 const GRID_GAP  = 2;
@@ -45,6 +45,7 @@ const availColor = (status: string) => {
 };
 
 export default function ProfileScreen({navigation}: any) {
+  const insets = useSafeAreaInsets();
   const [name, setName]                     = useState<string>('');
   const [phone, setPhone]                   = useState<string>('');
   const [bio, setBio]                       = useState<string>('');
@@ -80,6 +81,7 @@ export default function ProfileScreen({navigation}: any) {
   const [ageRange, setAgeRange]                     = useState<string>('');
   const [height, setHeight]                         = useState<string>('');
   const [bodyType, setBodyType]                     = useState<string>('');
+  const [isApprovedDirector, setIsApprovedDirector] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
   const user = auth().currentUser;
@@ -133,6 +135,7 @@ export default function ProfileScreen({navigation}: any) {
         setHeight(data?.height || '');
         setBodyType(data?.bodyType || '');
         setPortfolioMedia(data?.portfolioMedia || []);
+        setIsApprovedDirector(data?.isApprovedDirector === true);
       }
     } catch (e) {
       console.error('Error loading profile:', e);
@@ -223,15 +226,8 @@ export default function ProfileScreen({navigation}: any) {
   };
 
   const uploadToCloudinary = async (imageUri: string): Promise<string> => {
-    const formData = new FormData();
-    formData.append('file', {uri: imageUri, type: 'image/jpeg', name: 'photo.jpg'} as any);
-    formData.append('upload_preset', UPLOAD_PRESET);
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-      {method: 'POST', body: formData},
-    );
-    const data = await response.json();
-    return data.secure_url;
+    const result = await uploadImage(imageUri);
+    return result.secureUrl;
   };
 
   const saveProfile = async () => {
@@ -402,7 +398,7 @@ export default function ProfileScreen({navigation}: any) {
   const displayName = name || user?.email?.split('@')[0] || 'Me';
 
   return (
-    <>
+    <SafeAreaView style={{flex: 1, backgroundColor: '#0A0A0A'}}>
     <ScrollView ref={scrollRef} style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
@@ -758,10 +754,10 @@ export default function ProfileScreen({navigation}: any) {
         </TouchableOpacity>
 
         {/* ── MENU ── */}
-        <View style={styles.menuSection}>
+        <View style={[styles.menuSection, {marginBottom: insets.bottom + 60}]}>
           {[
             {icon: '🎬', label: 'My Applications', screen: 'MyApplications'},
-            {icon: '📊', label: 'Dashboard', screen: 'DirectorDashboard'},
+            ...(isApprovedDirector ? [{icon: '📊', label: 'Dashboard', screen: 'DirectorDashboard'}] : []),
             {icon: '🎥', label: 'My Films', screen: 'MyFilms'},
             {icon: '🏆', label: 'My Contests', screen: 'MyContests'},
             {icon: '💾', label: 'Saved Auditions', screen: 'SavedAuditions'},
@@ -814,7 +810,7 @@ export default function ProfileScreen({navigation}: any) {
       doubleTapToZoomEnabled
       backgroundColor="black"
     />
-  </>
+    </SafeAreaView>
   );
 }
 
