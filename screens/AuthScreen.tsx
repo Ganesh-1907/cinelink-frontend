@@ -12,6 +12,8 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 GoogleSignin.configure({
   webClientId: GOOGLE_WEB_CLIENT_ID,
+  offlineAccess: true,
+  forceCodeForRefreshToken: true,
 });
 
 // ─── Theme ────────────────────────────────────────────────────

@@ -1,13 +1,11 @@
-import Config from 'react-native-config';
-
 export const CLOUDINARY = {
-  CLOUD_NAME: Config.CLOUDINARY_CLOUD_NAME || 'dipwobgzb',
-  UPLOAD_PRESET: Config.CLOUDINARY_UPLOAD_PRESET || 'cinelink_upload',
+  CLOUD_NAME: 'dipwobgzb',
+  UPLOAD_PRESET: 'cinelink_upload',
 };
 
-export const ADMIN_EMAIL = Config.ADMIN_EMAIL || 'anilkumardevarakonda03@gmail.com';
-export const ADMIN_UID = Config.ADMIN_UID || 'moVQIEK5RqhXUOf4wk1L7913kZZ2';
-export const GOOGLE_WEB_CLIENT_ID = Config.GOOGLE_WEB_CLIENT_ID || '977625264040-361rbt4brb2avgb0hbg3g7uou27e8mo1.apps.googleusercontent.com';
+export const ADMIN_EMAIL = 'anilkumardevarakonda03@gmail.com';
+export const ADMIN_UID = 'moVQIEK5RqhXUOf4wk1L7913kZZ2';
+export const GOOGLE_WEB_CLIENT_ID = '977625264040-361rbt4brb2avgb0hbg3g7uou27e8mo1.apps.googleusercontent.com';
 
 export const APP_CONFIG = {
   APP_NAME: 'CineLink',

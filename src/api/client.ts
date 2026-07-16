@@ -19,7 +19,7 @@ import auth from '@react-native-firebase/auth';
 //   iOS simulator    → localhost
 //   Physical device  → your-machine-ip
 const API_BASE_URL = __DEV__
-  ? 'http://localhost:3001/api'   // Use `adb reverse tcp:3001 tcp:3001` for USB devices
+  ? 'http://localhost:3001/api'   // Works with: emulator (10.0.2.2) OR USB (adb reverse)
   : 'https://cinelink-api.onrender.com/api'; // Production
 
 // Set this override if you need a specific URL (e.g., iOS simulator)
