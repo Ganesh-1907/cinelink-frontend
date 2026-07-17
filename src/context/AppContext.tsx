@@ -1,119 +1,103 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import auth from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
-import { User, PremiumTier } from '../types';
+import api, { setJwtToken } from '../api/client';
+import { loadSavedSession, logout as authLogout } from '../services/authService';
+
+interface UserData {
+  _id: string; email?: string; fullName?: string; displayName?: string;
+  photoUrl?: string; role?: string; bio?: string; location?: string;
+  premiumTier: string; premiumExpiry?: string; verifiedReal: boolean;
+  isAdmin: boolean; isApprovedDirector: boolean;
+  phone?: string; fcmToken?: string;
+}
 
 interface AppState {
   user: any | null;
-  userData: User | null;
-  premiumTier: PremiumTier;
-  premiumExpiry: Date | null;
+  userData: UserData | null;
+  premiumTier: string;
   isPremium: boolean;
   isVerified: boolean;
   isAdmin: boolean;
   role: string;
+  isApprovedDirector: boolean;
   loading: boolean;
   refreshUserData: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const AppContext = createContext<AppState>({
-  user: null,
-  userData: null,
-  premiumTier: 'none',
-  premiumExpiry: null,
-  isPremium: false,
-  isVerified: false,
-  isAdmin: false,
-  role: 'Actor',
-  loading: true,
-  refreshUserData: async () => {},
-  signOut: async () => {},
+  user: null, userData: null, premiumTier: 'none',
+  isPremium: false, isVerified: false, isAdmin: false,
+  role: 'Actor', isApprovedDirector: false, loading: true,
+  refreshUserData: async () => {}, signOut: async () => {},
 });
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<any | null>(null);
-  const [userData, setUserData] = useState<User | null>(null);
-  const [premiumTier, setPremiumTier] = useState<PremiumTier>('none');
-  const [premiumExpiry, setPremiumExpiry] = useState<Date | null>(null);
-  const [role, setRole] = useState('Actor');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserData = async (uid: string) => {
+  const fetchUserData = async () => {
     try {
-      const doc = await firestore().collection('users').doc(uid).get();
-      if (doc.exists) {
-        const data = doc.data() as User;
-        setUserData(data);
-        setPremiumTier(data.premiumTier || 'none');
-        setPremiumExpiry(data.premiumExpiry?.toDate?.() || null);
-        setRole(data.role || 'Actor');
-
-        const adminEmail = 'anilkumardevarakonda03@gmail.com';
-        setIsAdmin(data.isAdmin === true || auth().currentUser?.email === adminEmail);
-      }
+      const res = await api.get<{ user: UserData }>('/users/profile');
+      const data = res.user;
+      setUserData(data);
+      return data;
     } catch (e) {
       console.warn('[AppContext] fetchUserData error:', e);
+      return null;
     }
   };
 
-  const refreshUserData = async () => {
-    if (user?.uid) await fetchUserData(user.uid);
-  };
+  const refreshUserData = async () => { await fetchUserData(); };
 
   const signOut = async () => {
-    await auth().signOut();
+    await authLogout();
+    try { await auth().signOut(); } catch {}
     setUser(null);
     setUserData(null);
-    setPremiumTier('none');
-    setPremiumExpiry(null);
-    setRole('Actor');
-    setIsAdmin(false);
   };
 
   useEffect(() => {
-    const subscriber = auth().onAuthStateChanged(async (authUser) => {
-      setUser(authUser);
-      if (authUser) {
-        await fetchUserData(authUser.uid);
-      } else {
-        setUserData(null);
-        setPremiumTier('none');
-        setPremiumExpiry(null);
-        setRole('Actor');
-        setIsAdmin(false);
+    (async () => {
+      const savedUser = await loadSavedSession();
+      if (savedUser) {
+        setUser(savedUser);
+        await fetchUserData();
       }
       setLoading(false);
-    });
-    return subscriber;
+    })();
   }, []);
 
+  // Legacy Firebase auth listener for backward compat
+  useEffect(() => {
+    const unsub = auth().onAuthStateChanged(async (fbUser) => {
+      if (fbUser && !user) {
+        setUser(fbUser);
+        setLoading(false);
+      }
+    });
+    return unsub;
+  }, []);
+
+  const ud = userData;
+  const premiumTier = ud?.premiumTier || 'none';
   const isPremium = premiumTier !== 'none';
-  const isVerified = userData?.verifiedReal === true;
+  const isVerified = ud?.verifiedReal === true;
+  const isAdmin = ud?.isAdmin === true;
+  const role = ud?.role || 'Actor';
+  const isApprovedDirector = ud?.isApprovedDirector === true;
 
   return (
-    <AppContext.Provider
-      value={{
-        user,
-        userData,
-        premiumTier,
-        premiumExpiry,
-        isPremium,
-        isVerified,
-        isAdmin,
-        role,
-        loading,
-        refreshUserData,
-        signOut,
-      }}>
+    <AppContext.Provider value={{
+      user, userData, premiumTier, isPremium,
+      isVerified, isAdmin, role, isApprovedDirector,
+      loading, refreshUserData, signOut,
+    }}>
       {children}
     </AppContext.Provider>
   );
 }
 
-export function useApp() {
-  return useContext(AppContext);
-}
-
+export function useApp() { return useContext(AppContext); }
 export default AppContext;

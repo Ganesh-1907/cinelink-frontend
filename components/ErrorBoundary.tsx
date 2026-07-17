@@ -7,7 +7,7 @@ import {
   SafeAreaView,
   StatusBar,
 } from 'react-native';
-import crashlytics from '@react-native-firebase/crashlytics';
+
 
 interface Props {
   children: ReactNode;
@@ -31,7 +31,7 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    crashlytics().recordError(error);
+    console.error(error);
     console.error('[ErrorBoundary]', error, errorInfo);
   }
 

@@ -1,268 +1,42 @@
 import React, {useState} from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Modal,
-  StyleSheet,
-  Alert,
-  TextInput,
-  ActivityIndicator,
-} from 'react-native';
-import firestore from '@react-native-firebase/firestore';
-import auth from '@react-native-firebase/auth';
+import {Modal, View, Text, TouchableOpacity, TextInput, Alert, ActivityIndicator} from 'react-native';
+import {createReport} from '../src/services/dataService';
 
-const REPORT_REASONS = [
-  {id: 'fake', label: '🚫 Fake / Scam Audition', icon: '🚫'},
-  {id: 'inappropriate', label: '⚠️ Inappropriate Content', icon: '⚠️'},
-  {id: 'spam', label: '📢 Spam / Duplicate Post', icon: '📢'},
-  {id: 'harassment', label: '🛑 Harassment / Abuse', icon: '🛑'},
-  {id: 'misleading', label: '❌ Misleading Information', icon: '❌'},
-  {id: 'other', label: '📝 Other', icon: '📝'},
-];
-
-type ReportModalProps = {
-  visible: boolean;
-  onClose: () => void;
-  contentId: string;
-  contentType: 'audition' | 'film' | 'contest' | 'user';
-  contentTitle: string;
-};
-
-export default function ReportModal({
-  visible,
-  onClose,
-  contentId,
-  contentType,
-  contentTitle,
-}: ReportModalProps) {
-  const [selectedReason, setSelectedReason] = useState('');
-  const [details, setDetails] = useState('');
+export default function ReportModal({visible, onClose, contentId, contentType, contentTitle}: any) {
+  const [reason, setReason] = useState(''); const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const submitReport = async () => {
-    if (!selectedReason) {
-      Alert.alert('Select a reason', 'Please choose why you are reporting this.');
-      return;
-    }
+  const reasons = ['Fake/Scam', 'Inappropriate', 'Spam', 'Harassment', 'Misleading', 'Other'];
 
-    const currentUser = auth().currentUser;
-    if (!currentUser) return;
-
+  const submit = async () => {
+    if (!reason) {Alert.alert('Select', 'Please select a reason.'); return;}
     setSubmitting(true);
-
-    try {
-      // Check if user already reported this
-      const existing = await firestore()
-        .collection('reports')
-        .where('contentId', '==', contentId)
-        .where('reportedBy', '==', currentUser.uid)
-        .get();
-
-      if (!existing.empty) {
-        Alert.alert('Already Reported', 'You have already reported this content. Our team will review it.');
-        onClose();
-        resetForm();
-        return;
-      }
-
-      await firestore().collection('reports').add({
-        contentId,
-        contentType,
-        contentTitle,
-        reason: selectedReason,
-        details: details.trim(),
-        reportedBy: currentUser.uid,
-        reportedByEmail: currentUser.email,
-        status: 'pending', // pending, reviewed, action_taken, dismissed
-        createdAt: firestore.FieldValue.serverTimestamp(),
-      });
-
-      Alert.alert(
-        '✅ Report Submitted',
-        'Thank you for reporting. Our team will review this within 24 hours.',
-        [{text: 'OK', onPress: onClose}],
-      );
-      resetForm();
-    } catch (e) {
-      console.log(e);
-      Alert.alert('Error', 'Failed to submit report. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const resetForm = () => {
-    setSelectedReason('');
-    setDetails('');
+    try { await createReport({reason, message: message.trim(), reportedUserId: contentId, contentType}); Alert.alert('Reported', 'Thank you. We will review it.'); onClose(); }
+    catch (e: any) {Alert.alert('Error', e.message);}
+    finally {setSubmitting(false);}
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>🚩 Report Content</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Text style={styles.closeBtn}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.reportingLabel}>
-            Reporting: <Text style={styles.reportingTitle}>{contentTitle}</Text>
-          </Text>
-
-          {/* Reasons */}
-          <Text style={styles.sectionTitle}>Why are you reporting this?</Text>
-
-          {REPORT_REASONS.map(reason => (
-            <TouchableOpacity
-              key={reason.id}
-              style={[
-                styles.reasonBtn,
-                selectedReason === reason.id && styles.reasonBtnActive,
-              ]}
-              onPress={() => setSelectedReason(reason.id)}>
-              <Text
-                style={[
-                  styles.reasonText,
-                  selectedReason === reason.id && styles.reasonTextActive,
-                ]}>
-                {reason.label}
-              </Text>
-              {selectedReason === reason.id && (
-                <Text style={styles.checkMark}>✓</Text>
-              )}
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={{flex:1, backgroundColor:'rgba(0,0,0,0.6)', justifyContent:'flex-end'}}>
+        <View style={{backgroundColor:'#141414', borderTopLeftRadius:24, borderTopRightRadius:24, padding:24, paddingBottom:40}}>
+          <Text style={{color:'#FFF', fontSize:20, fontWeight:'bold', marginBottom:16}}>🚨 Report</Text>
+          {reasons.map(r => (
+            <TouchableOpacity key={r} onPress={() => setReason(r)} style={{flexDirection:'row', alignItems:'center', paddingVertical:12, gap:8}}>
+              <View style={{width:22, height:22, borderRadius:11, borderWidth:2, borderColor: reason===r?'#C9956C':'#2A2A2A', justifyContent:'center', alignItems:'center'}}>
+                {reason===r ? <View style={{width:12, height:12, borderRadius:6, backgroundColor:'#C9956C'}} /> : null}
+              </View>
+              <Text style={{color: reason===r?'#C9956C':'#FFF', fontSize:15}}>{r}</Text>
             </TouchableOpacity>
           ))}
-
-          {/* Details */}
-          <TextInput
-            style={styles.detailsInput}
-            placeholder="Add more details (optional)..."
-            placeholderTextColor="#A09080"
-            value={details}
-            onChangeText={setDetails}
-            multiline
-            maxLength={300}
-            textAlignVertical="top"
-          />
-
-          {/* Submit */}
-          <TouchableOpacity
-            style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
-            onPress={submitReport}
-            disabled={submitting}>
-            {submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitText}>🚩 Submit Report</Text>
-            )}
+          <TextInput placeholder="Additional details (optional)" value={message} onChangeText={setMessage} multiline
+            style={{backgroundColor:'#1C1C1C', color:'#FFF', borderRadius:12, padding:14, minHeight:80, borderWidth:1, borderColor:'#2A2A2A', marginTop:12, marginBottom:16}} />
+          <TouchableOpacity onPress={submit} disabled={submitting}
+            style={{backgroundColor:'#EF4444', paddingVertical:14, borderRadius:12, alignItems:'center', opacity:submitting?0.6:1}}>
+            {submitting ? <ActivityIndicator color="#FFF" /> : <Text style={{color:'#FFF', fontSize:16, fontWeight:'600'}}>Submit Report</Text>}
           </TouchableOpacity>
         </View>
       </View>
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  container: {
-    backgroundColor: '#1C1C1C',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    maxHeight: '85%',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  headerTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  closeBtn: {
-    color: '#A09080',
-    fontSize: 22,
-    padding: 4,
-  },
-  reportingLabel: {
-    color: '#A09080',
-    fontSize: 13,
-    marginBottom: 16,
-  },
-  reportingTitle: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  sectionTitle: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  reasonBtn: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-  },
-  reasonBtnActive: {
-    borderColor: '#EF4444',
-    backgroundColor: 'rgba(239,68,68,0.1)',
-  },
-  reasonText: {
-    color: '#A09080',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  reasonTextActive: {
-    color: '#FCA5A5',
-    fontWeight: '600',
-  },
-  checkMark: {
-    color: '#EF4444',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  detailsInput: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 12,
-    padding: 14,
-    color: '#fff',
-    fontSize: 14,
-    minHeight: 70,
-    marginTop: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-  },
-  submitBtn: {
-    backgroundColor: '#DC2626',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  submitBtnDisabled: {
-    opacity: 0.6,
-  },
-  submitText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-});
